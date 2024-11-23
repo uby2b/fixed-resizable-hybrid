@@ -2,7 +2,6 @@ package com.lapask;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.GameState;
@@ -10,18 +9,18 @@ import net.runelite.api.events.*;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.InterfaceID;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetPositionMode;
-import net.runelite.api.worldmap.WorldMap;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.util.HotkeyListener;
 import java.awt.*;
-import java.lang.reflect.Field;
+import java.util.*;
+import java.util.List;
+
+import net.runelite.api.events.GameStateChanged;
 
 @Slf4j
 @PluginDescriptor(
@@ -46,21 +45,62 @@ public class FixedHybrid extends Plugin
 	@Inject
 	private KeyManager keyManager;
 
-	private Dimension draggingEdgesSecondResizeDimension;
 	private boolean resizeOnGameTick = false;
+
+	boolean widgetsModified = false;
+
+	boolean testBool = false;
+
+	private final HashMap<Integer, WidgetState> originalStates = new HashMap<>();
+
+	private void saveWidgetState(Widget widget) {
+		saveWidgetState(widget,false);
+	}
+	private void saveWidgetState(Widget widget, boolean resetLast) {
+		if (widget == null) {
+			return;
+		}
+
+		int widgetId = widget.getId();
+		// Check if this widget's state has already been saved
+		if (originalStates.containsKey(widgetId)) {
+			return;
+		}
+
+		// Save the current state of the widget
+		WidgetState widgetState = new WidgetState(
+				widget.getSpriteId(),
+				widget.getOriginalX(),
+				widget.getOriginalY(),
+				widget.getOriginalWidth(),
+				widget.getOriginalHeight(),
+				widget.getXPositionMode(),
+				widget.getYPositionMode(),
+				widget.getWidthMode(),
+				widget.getHeightMode(),
+				widget.isHidden(),
+				widget.isSelfHidden(),
+				resetLast
+		);
+		originalStates.put(widgetId, widgetState);
+	}
 	private final HotkeyListener hotkeyListener = new HotkeyListener(() -> config.resizeTrigger())
 	{
 		@Override
 		public void hotkeyPressed()
 		{
-			resizeClient(new Dimension(config.clientWidth(),config.clientHeight()));
+			log.info("hotkeyPressed");
 		}
 	};
 	@Override
 	protected void startUp() throws Exception
 	{
 		log.info("Fixed Hybrid Plugin started!");
+		GameState gameState = client.getGameState();
 		keyManager.registerKeyListener(hotkeyListener);
+		if (client.getGameState() == GameState.LOGGED_IN && !widgetsModified) {
+			queueUpdateAllOverrides();
+		}
 	}
 
 	@Override
@@ -68,7 +108,122 @@ public class FixedHybrid extends Plugin
 	{
 		log.info("Fixed Hybrid Plugin stopped!");
 		keyManager.unregisterKeyListener(hotkeyListener);
+		resetWidgets();
 	}
+	private Dimension calcSixteenByNineDimensions(){
+		Dimension currentSize = configManager.getConfiguration("runelite", "gameSize", Dimension.class);
+		int currentHeight = currentSize.height;
+		int calcWidth = 16*currentHeight/9;
+        return new Dimension(calcWidth,currentHeight);
+	}
+
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged gameStateChanged)
+	{
+		GameState gameState = gameStateChanged.getGameState();
+		if (gameState == GameState.LOGGED_IN && !widgetsModified)
+		{
+			queueUpdateAllOverrides();
+		} else if (gameState == GameState.LOGIN_SCREEN || gameState == GameState.HOPPING && widgetsModified){
+			resetWidgets();
+			widgetsModified = false;
+		}
+	}
+	// returns 1 for fixed mode
+	// returns 2 for resizeable - classic mode
+	// returns 3 for resizeable - modern mode
+	// returns -1 if it can't determine mode
+	private int getGameClientLayout(){
+		if (client.getGameState() == GameState.LOGGED_IN){
+			Widget classicResizableWidget = client.getWidget(InterfaceID.RESIZABLE_VIEWPORT,0);
+			if (classicResizableWidget != null && !classicResizableWidget.isHidden()){
+				log.info("gameClientLayout = 2");
+				return 2;
+			}
+			Widget modernResizableWidget = client.getWidget(InterfaceID.RESIZABLE_VIEWPORT_BOTTOM_LINE,0);
+			if (modernResizableWidget!=null && !modernResizableWidget.isHidden()){
+				log.info("gameClientLayout = 3");
+				return 3;
+			}
+			Widget classicFixedWidget = client.getWidget(InterfaceID.FIXED_VIEWPORT,0);
+			if (classicFixedWidget != null && !classicFixedWidget.isHidden()){
+				log.info("gameClientLayout = 1");
+				return 1;
+			}
+		}
+		log.info("gameClientLayout = -1");
+		return -1;
+	}
+//	public int getGameClientLayout(){
+//		Widget gameClientLayoutParent = client.getWidget(116,27);
+//		boolean resized = client.isResized();
+//		if (gameClientLayoutParent == null){
+//			return -1;
+//		}
+//		if (!resized){
+//			return 1;
+//		}
+//		Widget[] gameClientLayoutChildren = gameClientLayoutParent.getDynamicChildren();
+//		for (Widget child:gameClientLayoutChildren){
+//			String childText = child.getText();
+//			if (childText!=null){
+//				if (childText.equals("Resizable - Classic layout")){
+//					return 2;
+//				} else if (childText.equals("Resizable - Modern layout")) {
+//					return 3;
+//				}
+//			}
+//		}
+//		return -1;
+//	}
+//	@Subscribe
+//	public void onWidgetLoaded(WidgetLoaded widgetLoaded)
+//	{
+//		Widget widget = client.getWidget(widgetLoaded.getGroupId(),0);
+//		if (widget != null){
+//			//log.info("Widget Loaded, groupId = {}, widgetId = {}",widgetLoaded.getGroupId(),widget.getId());
+//			Widget oldSchoolBox = client.getWidget(161,15);
+//			if (oldSchoolBox!=null){
+//				int widgetParentId = widget.getParentId();
+//				Widget[] oldSchoolBoxChildren = oldSchoolBox.getStaticChildren();
+//				for (Widget osbChild : oldSchoolBoxChildren) {
+//					if (osbChild.getId() == widgetParentId) {
+//						log.info("Widget Loaded, revalidated Scroll");
+//						osbChild.revalidateScroll();
+//						//log.info("origX/Y:{}/{}  origW/H:{}/{}  X/YMode:{}/{}  W/HMode{}/{}", widget.getOriginalX(),widget.getOriginalY(),widget.getOriginalWidth(),widget.getOriginalHeight(),widget.getXPositionMode(),widget.getYPositionMode(),widget.getWidthMode(),widget.getHeightMode());
+////						boolean widgetChanged = false;
+////						if (widget.getWidthMode() == 1){
+////							widget.setWidthMode(0);
+////							widget.setOriginalWidth(osbChild.getWidth());
+////							widgetChanged = true;
+////						}
+////						if (widget.getHeightMode() == 1 && widget.getOriginalHeight() == 0) {
+////							widget.setHeightMode(0);
+////							widget.setOriginalHeight(osbChild.getHeight());
+////							widgetChanged = true;
+////						}
+////						if (widget.getXPositionMode() == 1){
+////							widget.setXPositionMode(0);
+////							if (widget.getOriginalX()!=0){
+////								widget.setOriginalX(osbChild.getOriginalWidth()/2);
+////							}
+////							widgetChanged = true;
+////						}
+////						if (widget.getYPositionMode() == 1){
+////							widget.setYPositionMode(0);
+////							if (widget.getOriginalY()!=0){
+////								widget.setOriginalY(osbChild.getOriginalHeight()/2);
+////							}
+////							widgetChanged = true;
+////						}
+////						if (widgetChanged) {
+////							widget.revalidate();
+////						}
+//					}
+//				}
+//			}
+//		}
+//	}
 
 	@Provides
 	FixedHybridConfig provideConfig(ConfigManager configManager)
@@ -76,11 +231,6 @@ public class FixedHybrid extends Plugin
 		return configManager.getConfig(FixedHybridConfig.class);
 	}
 
-	@Subscribe
-	public void onConfigChanged(ConfigChanged event)
-	{
-
-	}
 	@Subscribe
 	public void onGameTick(GameTick gameTick) {
 		//onGameTick only fires while logged in!
@@ -90,69 +240,301 @@ public class FixedHybrid extends Plugin
 			resizeOnGameTick = false;
 		}
 	}
-	@Subscribe
-	public void onWidgetLoaded(WidgetLoaded event) {
-		if (event.getGroupId() == 595){
-			setWidgetCoordinates(client.getWidget(160, 48).getId(), 23, 109);
-		}
-		log.info("WidgetLoaded: {}",event);
+
+
+	private void queueUpdateAllOverrides()
+	{
+		clientThread.invokeLater(() ->
+		{
+			// Cross sprites and widget sprite cache are not setup until login screen
+			if (client.getGameState() != GameState.LOGGED_IN)
+			{
+				return false;
+			}
+			int gameClientLayout = getGameClientLayout();
+			if (gameClientLayout!=-1) {
+				updateAllOverrides();
+				if (config.keepSixteenByNine()){
+					resizeClient(calcSixteenByNineDimensions());
+				}
+				return true;
+			}
+			return false;
+		});
 	}
+
 	@Subscribe
-	public void onWidgetClosed(WidgetClosed event) {
-		if (event.getGroupId() == 595){
-			setWidgetCoordinates(client.getWidget(160, 48).getId(), 23, 109);
+	public void onScriptPostFired(ScriptPostFired event) {
+		int scriptId = event.getScriptId();
+		if (scriptId == 909) {
+			fixNestedInterfaceDimensions();
+			fixInvBackground();
 		}
-		log.info("WidgetUnloaded: {}",event);
+		if (scriptId == 1699 || scriptId == 3305) {
+			fixWorldMapWikiStoreActAdvOrbs();
+		}
+		// Fires when the inventory background is changed, reverting it back to its old sprite
+		if (scriptId == 113) {
+			fixInvBackground();
+		}
+		// Fires when Game Interface Mode changes
+		if (scriptId == 901){ //3998
+			gameClientLayoutChanged();
+		}
+	}
+	public void gameClientLayoutChanged(){
+		int newGameClientLayout = getGameClientLayout();
+		if (newGameClientLayout == 2){
+			queueUpdateAllOverrides();
+		} else if (newGameClientLayout == 1 || newGameClientLayout == 3){
+			resetWidgets();
+		}
+	}
+	// Detects the scripts which will occasionally reset the positions of the world map orb and wiki banner, and resets their modified positions to matched fixed mode.
+	// Script 1699 = [clientscript,orbs_worldmap_setup]
+	// Script 3305 = 3305 [clientscript,wiki_icon_update]
+	private void fixWorldMapWikiStoreActAdvOrbs(){
+		if (getGameClientLayout() == 2) {
+			Widget worldMapOrb = client.getWidget(160, 48);
+			Widget wikiBanner = client.getWidget(ComponentID.MINIMAP_WIKI_BANNER_PARENT);
+			Widget storeOrb = client.getWidget(160, 42);
+			Widget activityAdviserOrb = client.getWidget(160, 47);
+
+			if (worldMapOrb != null && worldMapOrb.getOriginalX() == 0) {
+				saveWidgetState(worldMapOrb);
+				setWidgetCoordinates(worldMapOrb, 23, 109);
+			}
+			if (wikiBanner != null && wikiBanner.getOriginalX() == 0) {
+				saveWidgetState(wikiBanner);
+				setWidgetCoordinates(wikiBanner, 21, 129);
+			}
+			if (storeOrb != null && storeOrb.getOriginalX() != 13) {
+				saveWidgetState(storeOrb);
+				setWidgetParameters(client.getWidget(160, 42), 0+13, 83-6, 34, 34, 2, 0, 0, 0);
+			}
+			if (activityAdviserOrb != null && activityAdviserOrb.getOriginalX() != 13) {
+				saveWidgetState(activityAdviserOrb);
+				setWidgetParameters(client.getWidget(160, 47), 0+13, 50-6, 34, 34, 2, 0, 0, 0);
+			}
+		}
+	}
+	private void fixNestedInterfaceDimensions(){
+		if (widgetsModified) {
+			Widget clickWindow = client.getWidget(161, 92);
+			if (clickWindow != null) {
+				clickWindow.setXPositionMode(0);
+				clickWindow.revalidate();
+				Widget[] clickWindowSChildren = clickWindow.getStaticChildren();
+				for (Widget clickWindowSChild : clickWindowSChildren) {
+					if (clickWindowSChild.getOriginalWidth() == 250)
+					{
+						clickWindowSChild.setOriginalWidth(0);
+					}
+					clickWindowSChild.revalidateScroll();
+				}
+			}
+			Widget oldSchoolBoxParent = client.getWidget(161, 94);
+			if (oldSchoolBoxParent != null && oldSchoolBoxParent.getXPositionMode() == 1){
+				oldSchoolBoxParent.setXPositionMode(0);
+				oldSchoolBoxParent.revalidate();
+			}
+			Widget oldSchoolBox = client.getWidget(161, 15);
+			if (oldSchoolBox != null){
+				if (oldSchoolBox.getOriginalWidth() == 250){
+					oldSchoolBox.setOriginalWidth(0);
+					oldSchoolBox.revalidate();
+				}
+				Widget[] oldSchoolBoxChildren = oldSchoolBox.getStaticChildren();
+				for (Widget oldSchoolBoxChild : oldSchoolBoxChildren){
+					oldSchoolBoxChild.revalidateScroll();
+				}
+			}
+		}
+	}
+	private void fixInvBackground(){
+		if (widgetsModified && client.isResized()) {
+			Widget invBackground = client.getWidget(161, 38);
+			if (invBackground != null){
+				if (invBackground.getSpriteId() == 897) {
+					saveWidgetState(invBackground);
+					invBackground.setSpriteId(1031);
+				}
+			}
+		}
 	}
 	@Subscribe
 	public void onBeforeRender(final BeforeRender event)
 	{
-		if (client.isResized()) {
-			Widget invBackground = client.getWidget(161, 38);
-			Widget worldMapOrb = client.getWidget(160, 48);
-			Widget minimapSpriteResized = client.getWidget(161, 32);
-			Widget interfacesParent = client.getWidget(161,15);
-			if (invBackground != null){
-				if (invBackground.getSpriteId() == 897 && invBackground.getOriginalX() == 28) {
-					invBackground.setSpriteId(1031);
-				}
+
+	}
+	private void updateAllOverrides()
+	{
+		widgetsModified = true;
+		repositionMinimapWidgets();
+		showFixedSprites();
+		resizeRenderViewport();
+	}
+	public void resetWidgets() {
+		removeAddedWidgets();
+		resetRenderViewport();
+		List<Map.Entry<Integer, WidgetState>> resetLastEntries = new ArrayList<>();
+
+		// Iterate through the originalStates map
+		for (Map.Entry<Integer, WidgetState> entry : originalStates.entrySet()) {
+			int widgetId = entry.getKey();
+			WidgetState state = entry.getValue();
+
+			if (state.isResetLast()) {
+				resetLastEntries.add(entry); // Skip for now, add to the list to reset later
+				continue;
 			}
-			if (worldMapOrb != null && minimapSpriteResized != null) {
-				if (minimapSpriteResized.isHidden() && worldMapOrb.getOriginalX() == 0) {
-					//setWidgetCoordinates(worldMapOrb.getId(), 23, 109);
-				}
-			}
-			if (interfacesParent != null){
-				if (interfacesParent.getWidth() < 644) {
-					//interfacesParent.setWidth(644);
-				}
+
+			// Retrieve the widget and reset it
+			Widget widget = client.getWidget(widgetId);
+			if (widget != null) {
+				widget.setSpriteId(state.getSpriteId());
+				widget.setOriginalX(state.getOriginalX());
+				widget.setOriginalY(state.getOriginalY());
+				widget.setOriginalWidth(state.getOriginalWidth());
+				widget.setOriginalHeight(state.getOriginalHeight());
+				widget.setXPositionMode(state.getXPositionMode());
+				widget.setYPositionMode(state.getYPositionMode());
+				widget.setWidthMode(state.getWidthMode());
+				widget.setHeightMode(state.getHeightMode());
+				widget.setHidden(state.isHidden());
 			}
 		}
-	}
-	@Subscribe
-	public void onScriptCallbackEvent(ScriptCallbackEvent event) {
-		if ("adjustEnum".equals(event.getEventName())) {
-			int[] intStack = client.getIntStack();
-			int intStackSize = client.getIntStackSize();
 
-			// Access $enum1 (assume it's at a specific position, adjust as needed)
-			int enumIndex = intStackSize - 1;
-			int enumValue = intStack[enumIndex];
-
-			// Adjust the enum value if it's 1130
-			if (enumValue == 1130) {
-				intStack[enumIndex] = 1129;
+		// Revalidate widgets for isResetLast == false
+		clientThread.invoke(() -> {
+			for (Map.Entry<Integer, WidgetState> entry : originalStates.entrySet()) {
+				if (!entry.getValue().isResetLast()) {
+					Widget widget = client.getWidget(entry.getKey());
+					if (widget != null) {
+						widget.revalidateScroll();
+					}
+				}
 			}
+		});
+
+		// Process widgets with isResetLast() set to true
+		for (Map.Entry<Integer, WidgetState> entry : resetLastEntries) {
+			int widgetId = entry.getKey();
+			WidgetState state = entry.getValue();
+
+			// Retrieve the widget and reset it
+			Widget widget = client.getWidget(widgetId);
+			if (widget != null) {
+				widget.setSpriteId(state.getSpriteId());
+				widget.setOriginalX(state.getOriginalX());
+				widget.setOriginalY(state.getOriginalY());
+				widget.setOriginalWidth(state.getOriginalWidth());
+				widget.setOriginalHeight(state.getOriginalHeight());
+				widget.setXPositionMode(state.getXPositionMode());
+				widget.setYPositionMode(state.getYPositionMode());
+				widget.setWidthMode(state.getWidthMode());
+				widget.setHeightMode(state.getHeightMode());
+				widget.setHidden(state.isHidden());
+			}
+		}
+
+		// Revalidate widgets for isResetLast == true
+		clientThread.invoke(() -> {
+			for (Map.Entry<Integer, WidgetState> entry : resetLastEntries) {
+				Widget widget = client.getWidget(entry.getKey());
+				if (widget != null) {
+					widget.revalidateScroll();
+				}
+			}
+		});
+
+		// Clear the originalStates map after resetting
+		originalStates.clear();
+		widgetsModified = false;
+	}
+	public void removeAddedWidgets(){
+		Widget minimapDynamicParent = client.getWidget(161,22);
+		if (minimapDynamicParent!=null){
+			minimapDynamicParent.deleteAllChildren();
+		}
+		Widget invDynamicParent = client.getWidget(161,97);
+		if (invDynamicParent!=null){
+			invDynamicParent.deleteAllChildren();
+		}
+
+	}
+	public void testWidget(){
+		Widget testWidget = client.getWidget(161, 18);
+		if (testWidget != null) {
+			// Dynamic children
+			Widget[] dynamicChildren = testWidget.getDynamicChildren();
+			if (dynamicChildren != null) {
+				log.info("dynamicChildren != null");
+				log.info("length of Widget[] dynamicChildren = {}", dynamicChildren.length);
+				for (int i = 0; i < dynamicChildren.length; i++) {
+					log.info("dynamicChildren[{}].getId() = {}", i, dynamicChildren[i].getId());
+				}
+			} else {
+				log.info("dynamicChildren == null");
+			}
+
+
+
+			// Static children
+			Widget[] staticChildren = testWidget.getStaticChildren();
+			if (staticChildren != null) {
+				log.info("staticChildren != null");
+				log.info("length of Widget[] staticChildren = {}", staticChildren.length);
+				for (int i = 0; i < staticChildren.length; i++) {
+					log.info("staticChildren[{}].getId() = {}", i, staticChildren[i].getId());
+				}
+			} else {
+				log.info("staticChildren == null");
+			}
+			// Children
+			Widget[] children = testWidget.getChildren();
+			if (children != null) {
+				log.info("children != null");
+				log.info("length of Widget[] children = {}", children.length);
+				for (int i = 0; i < children.length; i++) {
+					log.info("children[{}].getId() = {}", i, children[i].getId());
+				}
+			} else {
+				log.info("children == null");
+			}
+
+			// First child
+			Widget firstChild = testWidget.getChild(0);
+			if (firstChild != null) {
+				log.info("firstChild != null");
+				log.info("firstChild.getId() = {}", firstChild.getId());
+			} else {
+				log.info("firstChild == null");
+			}
+			// Nested children - must run on the client thread
+			clientThread.invoke(() -> {
+				Widget[] nestedChildren = testWidget.getNestedChildren();
+				if (nestedChildren != null) {
+					log.info("nestedChildren != null");
+					log.info("length of Widget[] nestedChildren = {}", nestedChildren.length);
+					for (int i = 0; i < nestedChildren.length; i++) {
+						log.info("nestedChildren[{}].getId() = {}, parentId = {}", i, nestedChildren[i].getId(),nestedChildren[i].getParentId());
+					}
+				} else {
+					log.info("nestedChildren == null");
+				}
+			});
+			Widget settingsPanel = client.getWidget(134,0);
+			log.info("settingsPanel.getParentId() = {}",settingsPanel.getParentId());
 		}
 	}
 	/**
 	 * Resizes the client to the specified dimension.
 	 */
 	private void resizeClient(Dimension dimension) {
-		if (client.getGameState() != GameState.LOGGED_IN) {
-			log.warn("Client is not logged in. Cannot resize.");
-			return;
-		}
+//		if (client.getGameState() != GameState.LOGGED_IN) {
+//			return;
+//		}
 
 		// Validate and adjust the dimensions
 		int processedWidth = Math.max(Math.min(dimension.width, 7680), Constants.GAME_FIXED_WIDTH);
@@ -163,204 +545,106 @@ public class FixedHybrid extends Plugin
 			Dimension processedGameSizePlus1 = new Dimension(processedWidth + 1, processedHeight);
 			configManager.setConfiguration("runelite", "gameSize", processedGameSizePlus1);
 			resizeOnGameTick = true;
-			log.info("Client resized to: {}x{}", processedGameSizePlus1.width, processedGameSizePlus1.height);
 		}
 		if (!processedGameSize.equals(currentSize)){
 			configManager.setConfiguration("runelite", "gameSize", processedGameSize);
-			log.info("Client resized to: {}x{}", processedGameSize.width, processedGameSize.height);
 			//redundancy
 			resizeOnGameTick = false;
-			//logAllWidgetCoordinates();
-			repositionMinimapWidgets();
 		}
 	}
-	public void logWorldMapWidgetInfo() {
-		// Check if the WORLD_MAP widget exists
-		Widget worldMapWidget = client.getWidget(InterfaceID.WORLD_MAP);
 
-		if (worldMapWidget == null) {
-			// Log that the WORLD_MAP widget is null
-			log.info("WORLD_MAP widget is null.");
-		} else {
-			// Log the information if the widget is not null
-			int interfaceId = InterfaceID.WORLD_MAP;
-			int widgetId = worldMapWidget.getId();
-			boolean isHidden = worldMapWidget.isHidden();
-
-			log.info("WORLD_MAP Widget Details - InterfaceID: {}, WidgetID: {}, isHidden: {}",
-					interfaceId, widgetId, isHidden);
-		}
-	}
-	public void logAllWidgetCoordinates() {
-		// Log coordinates for each widget
-		//Widget inventoryWidget = client.getWidget(161, 97);
-		//Widget inventoryWidget = client.getWidget(ComponentID.MINIMAP_CONTAINER);
-		//int inventoryWidgetId = inventoryWidget.getId();
-		//log.info("XPosMode: {} YPosMode: {} OriginalX: {} OriginalY: {} RelativeX: {} RelativeY: {}",inventoryWidget.getXPositionMode(),inventoryWidget.getYPositionMode(),inventoryWidget.getOriginalX(),inventoryWidget.getOriginalY(),inventoryWidget.getRelativeX(),inventoryWidget.getRelativeY());
-		//setWidgetOffsetCoordinates(client.getWidget(161, 95).getId(),41,0);
-		//logWidgetCoordinates("RESIZEABLE_VIEWPORT_INTERFACE_CONTAINER", inventoryWidgetId);
-		//logWidgetCoordinates("MINIMAP_HEALTH_ORB", ComponentID.MINIMAP_HEALTH_ORB);
-		//setWidgetOffsetCoordinates(client.getWidget(161, 97).getId(),2,0);
-		//setWidgetOffsetCoordinates(ComponentID.MINIMAP_XP_ORB,3,-6);
-		//setWidgetOffsetCoordinates(ComponentID.MINIMAP_SPEC_ORB, 3, -6);
-
-		Widget miniViewportFixed = client.getWidget(548,21);
-
-
-		if (miniViewportFixed!=null) {
-			logWidgetCoordinates("MINIMAP_VIEWPORT_FIXED", miniViewportFixed.getId());
-		}
-		Widget miniViewportResize = client.getWidget(161,30);
-		if (miniViewportResize!=null) {
-			//setWidgetOffsetCoordinates(miniViewportResize.getId(),48,-3);
-			logWidgetCoordinates("MINIMAP_VIEWPORT_RESIZE", miniViewportResize.getId());
-		}
-		logWidgetCoordinates("MINIMAP_CONTAINER", ComponentID.MINIMAP_CONTAINER);
-		logWidgetCoordinates("MINIMAP_XP_ORB", ComponentID.MINIMAP_XP_ORB);
-		logWidgetCoordinates("MINIMAP_HEALTH_ORB", ComponentID.MINIMAP_HEALTH_ORB);
-		logWidgetCoordinates("MINIMAP_PRAYER_ORB", ComponentID.MINIMAP_PRAYER_ORB);
-		logWidgetCoordinates("MINIMAP_RUN_ORB", ComponentID.MINIMAP_RUN_ORB);
-		logWidgetCoordinates("MINIMAP_SPEC_ORB", ComponentID.MINIMAP_SPEC_ORB);
-		logWidgetCoordinates("MINIMAP_WORLDMAP_ORB", ComponentID.MINIMAP_WORLDMAP_ORB);
-		logWidgetCoordinates("MINIMAP_WIKI_BANNER_PARENT", ComponentID.MINIMAP_WIKI_BANNER_PARENT);
-		Widget compassWidgetFixed = client.getWidget(548,20);
-		if (compassWidgetFixed!=null){
-			logWidgetCoordinates("COMPASS_WIDGET_FIXED", compassWidgetFixed.getId());
-		}
-		Widget compassWidgetClickBoxFixed = client.getWidget(548,23);
-		if (compassWidgetClickBoxFixed!=null){
-			logWidgetCoordinates("COMPASS_WIDGET_CLICKBOX_FIXED", compassWidgetClickBoxFixed.getId());
-		}
-		Widget compassWidgetResize = client.getWidget(161,29);
-		if (compassWidgetResize!=null){
-			logWidgetCoordinates("COMPASS_WIDGET_RESIZE", compassWidgetResize.getId());
-		}
-		Widget compassWidgetClickBoxResize = client.getWidget(161,31);
-		if (compassWidgetClickBoxResize!=null){
-			logWidgetCoordinates("COMPASS_WIDGET_CLICKBOX_RESIZE", compassWidgetClickBoxResize.getId());
-		}
-		//createMinimapWidget();
-	}
-	private void logWidgetCoordinates(String widgetName, int componentId) {
-		Widget widget = client.getWidget(componentId);
-
-		if (widget != null) {
-			// Log the original X and Y coordinates
-			int x = widget.getOriginalX();
-			int y = widget.getOriginalY();
-			int posModeX = widget.getXPositionMode();
-			int posModeY = widget.getYPositionMode();
-			log.info("{} Widget coordinates: OrigX = {}, OrigY = {}, PosModeX = {}, PosModeY = {}", widgetName, x, y, posModeX, posModeY);
-		} else {
-			log.warn("Widget is null! Cannot log info");
-		}
-	}
-	private void logWidgetCoordinates(String widgetName, Widget widget) {
-		if (widget != null) {
-			// Log the original X and Y coordinates
-			int x = widget.getOriginalX();
-			int y = widget.getOriginalY();
-			int posModeX = widget.getXPositionMode();
-			int posModeY = widget.getYPositionMode();
-			log.info("{} Widget coordinates: OrigX = {}, OrigY = {}, PosModeX = {}, PosModeY = {}", widgetName, x, y, posModeX, posModeY);
-		} else {
-			log.warn("Widget is null! Cannot log info");
-		}
-	}
-	public void setWidgetOffsetCoordinates(int componentId, int offsetX, int offsetY) {
-		Widget widget = client.getWidget(componentId);
-
-		if (widget != null) {
-			// Get the current coordinates
-			int currentX = widget.getOriginalX();
-			int currentY = widget.getOriginalY();
-
-			// Calculate new coordinates using the offsets
-			int newX = currentX + offsetX;
-			int newY = currentY + offsetY;
-
-			// Set the new coordinates
-			widget.setOriginalX(newX);
-			widget.setOriginalY(newY);
-
-			// Log the updated coordinates
-			log.info("Widget {} moved by offset: X = {}, Y = {}. New coordinates: X = {}, Y = {}",
-					componentId, offsetX, offsetY, newX, newY);
-		}
-	}
-	public void setWidgetOffsetCoordinates(Widget widget, int offsetX, int offsetY) {
-		if (widget != null) {
-			// Get the current coordinates
-			int currentX = widget.getOriginalX();
-			int currentY = widget.getOriginalY();
-
-			// Calculate new coordinates using the offsets
-			int newX = currentX + offsetX;
-			int newY = currentY + offsetY;
-
-			// Set the new coordinates
-			widget.setOriginalX(newX);
-			widget.setOriginalY(newY);
-
-			// Log the updated coordinates
-			log.info("Widget {} moved by offset: X = {}, Y = {}. New coordinates: X = {}, Y = {}",
-					widget.getId(), offsetX, offsetY, newX, newY);
-		}
-	}
 	public void setWidgetCoordinates(int componentId, int newX, int newY) {
-		Widget widget = client.getWidget(componentId);
-
-		if (widget != null) {
-
-			// Set the new coordinates
+		setWidgetCoordinates(client.getWidget(componentId),newX,newY);
+	}
+	public void setWidgetCoordinates(Widget widget, int newX, int newY) {
+		if (widget != null){
+			saveWidgetState(widget);
 			widget.setOriginalX(newX);
 			widget.setOriginalY(newY);
-			widget.revalidate(); // Apply the changes
-
-			// Log the updated coordinates
-			log.info("Widget {} moved to: X = {}, Y = {}.",
-					componentId, newX, newY);
-		} else {
-			log.warn("Widget with component ID {} is null!", componentId);
+			widget.revalidateScroll();
+		}
+	}
+	public void setWidgetParameters(Widget widget,
+									 int newX,
+									 int newY,
+									 int newOriginalWidth,
+									 int newOriginalHeight,
+									 int newXPositionMode,
+									 int newYPositionMode,
+									 int newWidthMode,
+									 int newHeightMode) {
+		if (widget != null) {
+			saveWidgetState(widget);
+			widget.setOriginalX(newX);
+			widget.setOriginalY(newY);
+			widget.setOriginalWidth(newOriginalWidth);
+			widget.setOriginalHeight(newOriginalHeight);
+			widget.setXPositionMode(newXPositionMode);
+			widget.setYPositionMode(newYPositionMode);
+			widget.setWidthMode(newWidthMode);
+			widget.setHeightMode(newHeightMode);
+			widget.revalidateScroll();
 		}
 	}
 	public void repositionMinimapWidgets(){
 		Widget minimapWidget = client.getWidget(161,95);
+		Widget minimapSprite = client.getWidget(161, 32);
 		Widget minimapWidgetOrbsParent = client.getWidget(161,33);
-		log.info("Reposition minimap widgets function run");
-		if (minimapWidget != null && client.isResized())
+		Widget minimapWidgetOrbsInterface = client.getWidget(160,0);
+		if (client.isResized() &&
+				minimapWidget != null &&
+				minimapSprite != null &&
+				minimapWidgetOrbsParent != null &&
+				minimapWidgetOrbsInterface != null)
 		{
-			client.getWidget(161, 32).setHidden(true);
-			if (minimapWidgetOrbsParent != null) {
-				minimapWidget.setOriginalWidth(249);
-				minimapWidget.setOriginalHeight(207);
-				minimapWidgetOrbsParent.setOriginalWidth(249);
-				minimapWidgetOrbsParent.setOriginalHeight(197);
-				int[][] minimapViewportAdjustment = {
-						{23, 44, 5},
-						{24, 44, 45},
-						{25, 44, 101},
-						{26, 44, 126},
-						{27, 44, 141},
-						{28, 44, 156},
-						{30, 50, 9},
-						{32, 44, 1}
-				};
-				for (int[] adjustment : minimapViewportAdjustment) {
-					int childId = adjustment[0];
-					int newX = adjustment[1];
-					int newY = adjustment[2];
+			saveWidgetState(minimapWidget,true);
+			saveWidgetState(minimapSprite);
+			saveWidgetState(minimapWidgetOrbsInterface);
+			saveWidgetState(minimapWidgetOrbsParent);
 
-					Widget wdgToAdj = client.getWidget(161, childId);
-					if (wdgToAdj != null && wdgToAdj.getXPositionMode() == 2) {
-						// Set the position mode to absolute
-						wdgToAdj.setXPositionMode(0);
+			minimapSprite.setHidden(true);
 
-						// Set the absolute coordinates using setWidgetCoordinates
-						setWidgetCoordinates(wdgToAdj.getId(), newX, newY);
-					}
+			minimapWidget.setOriginalWidth(249);
+			minimapWidget.setOriginalHeight(207);
+			minimapWidget.revalidate();
+
+			minimapWidgetOrbsParent.setOriginalWidth(249);
+			minimapWidgetOrbsParent.setOriginalHeight(197);
+			minimapWidgetOrbsParent.revalidate();
+
+			minimapWidgetOrbsInterface.setOriginalWidth(249);
+			minimapWidgetOrbsInterface.setOriginalHeight(197);
+			minimapWidgetOrbsInterface.setWidthMode(0);
+			minimapWidgetOrbsInterface.setHeightMode(0);
+			minimapWidgetOrbsInterface.revalidateScroll();
+
+			int[][] minimapViewportAdjustment = {
+					{23, 44, 5},
+					{24, 44, 45},
+					{25, 44, 101},
+					{26, 44, 126},
+					{27, 44, 141},
+					{28, 44, 156},
+					{30, 50, 9},
+					{32, 44, 1}
+			};
+			for (int[] adjustment : minimapViewportAdjustment) {
+				int childId = adjustment[0];
+				int newX = adjustment[1];
+				int newY = adjustment[2];
+
+				Widget wdgToAdj = client.getWidget(161, childId);
+				if (wdgToAdj != null && wdgToAdj.getXPositionMode() == 2) {
+					saveWidgetState(wdgToAdj,true);
+					// Set the position mode to absolute
+					wdgToAdj.setXPositionMode(0);
+
+					// Set the absolute coordinates using setWidgetCoordinates
+					setWidgetCoordinates(wdgToAdj, newX, newY);
+					wdgToAdj.revalidate();
 				}
 			}
+
 			//xp button
 			setWidgetCoordinates(ComponentID.MINIMAP_XP_ORB,0,11);
 			//health orb
@@ -371,50 +655,22 @@ public class FixedHybrid extends Plugin
 			setWidgetCoordinates(ComponentID.MINIMAP_RUN_ORB, 10, 97);
 			//spec orb
 			setWidgetCoordinates(ComponentID.MINIMAP_SPEC_ORB, 32, 122);
-			//wiki button
-			setWidgetCoordinates(ComponentID.MINIMAP_WIKI_BANNER_PARENT, 21, 129);
-			//worldmap orb
-			setWidgetCoordinates(client.getWidget(160, 48).getId(), 23, 109);
 			//compass orb clickbox
-			setWidgetCoordinates(client.getWidget(161, 31).getId(), 26, 1);
+			setWidgetCoordinates(client.getWidget(161, 31), 26, 1);
 			//compass orb viewbox
-			setWidgetCoordinates(client.getWidget(161, 29).getId(), 28, 3);
-			//inventory
-			//setWidgetCoordinates(client.getWidget(161, 97).getId(), 2, 0);
-
-			logWorldMapWidgetInfo();
-			resizeViewport();
-//			//xp button
-//			setWidgetOffsetCoordinates(ComponentID.MINIMAP_XP_ORB,0,-6);
-//			//health orb
-//			setWidgetOffsetCoordinates(ComponentID.MINIMAP_HEALTH_ORB, 0, -6);
-//			//prayer orb
-//			setWidgetOffsetCoordinates(ComponentID.MINIMAP_PRAYER_ORB, 0, -6);
-//			//run orb
-//			setWidgetOffsetCoordinates(ComponentID.MINIMAP_RUN_ORB, 0, -6);
-//			//spec orb
-//			setWidgetOffsetCoordinates(ComponentID.MINIMAP_SPEC_ORB, 0, -6);
-//			//wiki button
-//			setWidgetOffsetCoordinates(ComponentID.MINIMAP_WIKI_BANNER_PARENT, 21, -6);
-//			//worldmap orb
-//			setWidgetOffsetCoordinates(client.getWidget(160, 48).getId(), 23, -6);
-//			//compass orb clickbox
-//			setWidgetOffsetCoordinates(client.getWidget(161, 31).getId(), -6, -2);
-//			//compass orb viewbox
-//			setWidgetOffsetCoordinates(client.getWidget(161, 29).getId(), -6, -2);
-//			//inventory
-//			setWidgetOffsetCoordinates(client.getWidget(161, 97).getId(), 2, 0);
-			showFixedSprites();
+			setWidgetCoordinates(client.getWidget(161, 29), 28, 3);
+			//world map orb, wiki banner, store orb, and activity adviser orb all handled under this function
+			fixWorldMapWikiStoreActAdvOrbs();
 		}
 	}
 	public void showFixedSprites() {
 		// Get the parent widget the sprites should be under
 		Widget minimapParentWidget = client.getWidget(161, 22);
-		Widget inventoryParentWidget = client.getWidget(161, 97);
+		Widget inventoryParentWidget = client.getWidget(161,97);
 		// Define the configurations for all the sprites
 		// Each row represents a sprite with the following columns:
 		// [groupId, childId, type, spriteId, originalX, originalY, originalWidth, originalHeight, xPositionMode, yPositionMode, widthMode, heightMode]
-		int[][] spriteConfigs = {
+		int[][] newSpriteConfigs = {
 				{161, 22, 5, 1182, 29, 4, 172, 156, 0, 0, 0, 0, 0},  // centerMinimapSprite
 				{161, 22, 5, 1611, 0, 160, 249, 8, 1, 0, 0, 0, 0},   // bottomMinimapSprite
 				{161, 22, 5, 1037, 0, 4, 29, 156, 0, 0, 0, 0, 0},    // leftMinimapSprite
@@ -429,82 +685,219 @@ public class FixedHybrid extends Plugin
 		if (minimapParentWidget != null && inventoryParentWidget != null) {
 			inventoryWidgetBoundsFix();
 			// Create widgets using the configurations
-			for (int[] config : spriteConfigs) {
-				Widget parentWidget = client.getWidget(config[0],config[1]);
-				Widget minimapSprite = parentWidget.createChild(config[2]);
-				minimapSprite.setSpriteId(config[3]);
-				minimapSprite.setOriginalX(config[4]);
-				minimapSprite.setOriginalY(config[5]);
-				minimapSprite.setOriginalWidth(config[6]);
-				minimapSprite.setOriginalHeight(config[7]);
-				minimapSprite.setXPositionMode(config[8]);
-				minimapSprite.setYPositionMode(config[9]);
-				minimapSprite.setWidthMode(config[10]);
-				minimapSprite.setHeightMode(config[11]);
-				if (config[11] == 1){
+			for (int[] newSpriteConfig : newSpriteConfigs) {
+				Widget parentWidget = client.getWidget(newSpriteConfig[0],newSpriteConfig[1]);
+				Widget minimapSprite = parentWidget.createChild(newSpriteConfig[2]);
+				minimapSprite.setSpriteId(newSpriteConfig[3]);
+				minimapSprite.setOriginalX(newSpriteConfig[4]);
+				minimapSprite.setOriginalY(newSpriteConfig[5]);
+				minimapSprite.setOriginalWidth(newSpriteConfig[6]);
+				minimapSprite.setOriginalHeight(newSpriteConfig[7]);
+				minimapSprite.setXPositionMode(newSpriteConfig[8]);
+				minimapSprite.setYPositionMode(newSpriteConfig[9]);
+				minimapSprite.setWidthMode(newSpriteConfig[10]);
+				minimapSprite.setHeightMode(newSpriteConfig[11]);
+				if (newSpriteConfig[11] == 1){
 					minimapSprite.setNoClickThrough(true);
 				}
+				minimapSprite.getParent().revalidate();
 				minimapSprite.revalidate();
 			}
 		}
 	}
-	public void inventoryWidgetBoundsFix(){
-		Widget invParent = client.getWidget(161, 97);
-		Widget invBackground = client.getWidget(161,38);
-		Widget invLeftColumn = client.getWidget(161,39);
-		Widget invRightColumn = client.getWidget(161,40);
-		Widget invBottomBarSprite = client.getWidget(161,41);
-		Widget invBottomTabsParent = client.getWidget(161,42);
-		Widget invTopBarSprite = client.getWidget(161,57);
-		Widget invTopTabsParent = client.getWidget(161,58);
-		Widget invViewportInterfaceController = client.getWidget(161,73);
+	public void inventoryWidgetBoundsFix() {
+		Widget invParent = client.getWidget(161,97);
+		if (invParent != null) {
+			saveWidgetState(invParent,true);
+			invParent.setOriginalWidth(249);
+			invParent.setOriginalHeight(336);
+			invParent.revalidate();
+		}
 
-		invParent.setOriginalWidth(249);
-		invParent.setOriginalHeight(336);
+		Widget invBackground = client.getWidget(161, 38);
+		if (invBackground != null) {
+			saveWidgetState(invBackground);
+			invBackground.setOriginalX(28);
+			invBackground.setOriginalY(37);
+			invBackground.setOriginalWidth(190);
+			invBackground.setOriginalHeight(261);
+			invBackground.setSpriteId(1031);
+			invBackground.revalidate();
+		}
 
-		invBackground.setOriginalX(28);
-		invBackground.setOriginalY(37);
-		invBackground.setOriginalWidth(190);
-		invBackground.setOriginalHeight(261);
-		invBackground.setSpriteId(1031);
+		Widget invLeftColumn = client.getWidget(161, 39);
+		if (invLeftColumn != null) {
+			saveWidgetState(invLeftColumn);
+			invLeftColumn.setHidden(true);
+			invLeftColumn.revalidate();
+		}
+		Widget invRightColumn = client.getWidget(161, 40);
+		if (invRightColumn != null) {
+			saveWidgetState(invRightColumn);
+			invRightColumn.setHidden(true);
+			invRightColumn.revalidate();
+		}
 
-		invLeftColumn.setHidden(true);
-		invRightColumn.setHidden(true);
+		Widget invBottomBarSprite = client.getWidget(161, 41);
+		if (invBottomBarSprite != null) {
+			saveWidgetState(invBottomBarSprite);
+			invBottomBarSprite.setOriginalWidth(246);
+			invBottomBarSprite.setOriginalHeight(37);
+			invBottomBarSprite.setSpriteId(1032);
+			invBottomBarSprite.revalidate();
+		}
 
-		invBottomBarSprite.setOriginalWidth(246);
-		invBottomBarSprite.setOriginalHeight(37);
-		invBottomBarSprite.setSpriteId(1032);
+		Widget invBottomTabsParent = client.getWidget(161, 42);
+		if (invBottomTabsParent != null) {
+			saveWidgetState(invBottomTabsParent,true);
+			invBottomTabsParent.setOriginalX(2);
+			invBottomTabsParent.revalidate();
+		}
 
-		invBottomTabsParent.setOriginalX(2);
+		Widget invTopBarSprite = client.getWidget(161, 57);
+		if (invTopBarSprite != null) {
+			saveWidgetState(invTopBarSprite);
+			invTopBarSprite.setOriginalY(298);
+			invTopBarSprite.setOriginalWidth(249);
+			invTopBarSprite.setOriginalHeight(38);
+			invTopBarSprite.setSpriteId(1036);
+			invTopBarSprite.revalidate();
+		}
 
-		invTopBarSprite.setOriginalY(298);
-		invTopBarSprite.setOriginalWidth(249);
-		invTopBarSprite.setOriginalHeight(38);
-		invTopBarSprite.setSpriteId(1036);
+		Widget invTopTabsParent = client.getWidget(161, 58);
+		if (invTopTabsParent != null) {
+			saveWidgetState(invTopTabsParent,true);
+			invTopTabsParent.setOriginalX(2);
+			invTopTabsParent.revalidate();
+		}
 
-		invTopTabsParent.setOriginalX(2);
-
-		invViewportInterfaceController.setOriginalX(26+2);
-
+		Widget invViewportInterfaceController = client.getWidget(161, 73);
+		if (invViewportInterfaceController != null) {
+			saveWidgetState(invViewportInterfaceController);
+			invViewportInterfaceController.setOriginalX(26 + 2);
+			invViewportInterfaceController.revalidate();
+		}
 	}
-
-	public void resizeViewport(){
+//	public void inventoryWidgetBoundsFix(){
+//		Widget invParent = client.getWidget(161, 97);
+//		Widget invBackground = client.getWidget(161,38);
+//		Widget invLeftColumn = client.getWidget(161,39);
+//		Widget invRightColumn = client.getWidget(161,40);
+//		Widget invBottomBarSprite = client.getWidget(161,41);
+//		Widget invBottomTabsParent = client.getWidget(161,42);
+//		Widget invTopBarSprite = client.getWidget(161,57);
+//		Widget invTopTabsParent = client.getWidget(161,58);
+//		Widget invViewportInterfaceController = client.getWidget(161,73);
+//
+//		saveInventoryWidgetStates();
+//
+//		invParent.setOriginalWidth(249);
+//		invParent.setOriginalHeight(336);
+//		invParent.revalidate();
+//
+//		invBackground.setOriginalX(28);
+//		invBackground.setOriginalY(37);
+//		invBackground.setOriginalWidth(190);
+//		invBackground.setOriginalHeight(261);
+//		invBackground.setSpriteId(1031);
+//		invBackground.revalidate();
+//
+//		invLeftColumn.setHidden(true);
+//		invRightColumn.setHidden(true);
+//		invLeftColumn.revalidate();
+//		invRightColumn.revalidate();
+//
+//		invBottomBarSprite.setOriginalWidth(246);
+//		invBottomBarSprite.setOriginalHeight(37);
+//		invBottomBarSprite.setSpriteId(1032);
+//		invBottomBarSprite.revalidate();
+//
+//		invBottomTabsParent.setOriginalX(2);
+//		invBottomTabsParent.revalidate();
+//
+//		invTopBarSprite.setOriginalY(298);
+//		invTopBarSprite.setOriginalWidth(249);
+//		invTopBarSprite.setOriginalHeight(38);
+//		invTopBarSprite.setSpriteId(1036);
+//		invTopBarSprite.revalidate();
+//
+//		invTopTabsParent.setOriginalX(2);
+//		invTopTabsParent.revalidate();
+//
+//		invViewportInterfaceController.setOriginalX(26+2);
+//		invViewportInterfaceController.revalidate();
+//
+//	}
+	public void resizeRenderViewport(){
 		Widget mainViewport = client.getWidget(161,91);
 		if (mainViewport != null){
-			//client.getWidget(161,94).setOriginalWidth(894);
+			saveWidgetState(mainViewport);
 			mainViewport.setOriginalWidth(249);
-			Widget oldSchoolBoxParent = client.getWidget(161,94);
-			Widget fixedViewport = client.getWidget(548,9);
-			if (fixedViewport != null){
-				log.info("fixed viewport exists, isHidden: {}, isSelfHidden: {}",fixedViewport.isHidden(),fixedViewport.isSelfHidden());
-				//fixedViewport.setHidden(false);
-			}
-			else{
-				log.info("fixedViewportNotFound");
-			}
-		//(Math.floor(0.5*mainViewport.getOriginalWidth()));
-			//oldSchoolBoxParent.setXPositionMode(0);
-			//oldSchoolBoxParent.setOriginalWidth(894);
+			mainViewport.revalidate();
+		}
+	}
+	public void resetRenderViewport(){
+		Widget mainViewport = client.getWidget(161,91);
+		if (mainViewport != null){
+			clientThread.invoke(()-> {
+				mainViewport.setOriginalWidth(0);
+				mainViewport.revalidate();
+			});
 		}
 	}
 }
+
+
+//@Subscribe
+//public void onScriptPostFired(ScriptPostFired event) {
+//	if (widgetsModified) {
+//		int scriptId = event.getScriptId();
+//		if (scriptId == 909) {
+//			Widget interfacesParent = client.getWidget(161, 94);
+//			Widget oldSchoolBox = client.getWidget(161, 15);
+//			Widget clickWindow = client.getWidget(161, 92);
+//			if (clickWindow != null) {
+//				clickWindow.setXPositionMode(0);
+//				Widget[] clickWindowSChildren = clickWindow.getStaticChildren();
+//				for (Widget clickWindowSChild : clickWindowSChildren) {
+//					//log.info("checking widget {}, getWidth = {}",clickWindowSChild.getId(), clickWindowSChild.getOriginalWidth());
+//					if (clickWindowSChild != null &&
+//							clickWindowSChild.getOriginalWidth() == 250)
+//					{
+//						clickWindowSChild.setOriginalWidth(0);
+//						clickWindowSChild.revalidate();
+//					}
+//				}
+//			}
+//			if (interfacesParent != null && oldSchoolBox != null) {
+//				if (interfacesParent.getXPositionMode() == 1 || oldSchoolBox.getOriginalWidth() == 250) {
+//					interfacesParent.setXPositionMode(0);
+//					oldSchoolBox.setOriginalWidth(0);
+//					interfacesParent.revalidate();
+//					oldSchoolBox.revalidate();
+//				}
+//				Widget[] oldSchoolBoxChildren = oldSchoolBox.getStaticChildren();
+//				for (Widget oldSchoolBoxChild : oldSchoolBoxChildren){
+//					if (oldSchoolBoxChild != null) {
+//						oldSchoolBoxChild.setOriginalX(0);
+//						oldSchoolBoxChild.revalidate();
+//					}
+//				}
+//			}
+//		}
+//		// Detects the scripts which will occasionally reset the positions of the world map orb and wiki banner, and resets their modified positions to matched fixed mode.
+//		// Script 1699 = [clientscript,orbs_worldmap_setup]
+//		// Script 3305 = 3305 [clientscript,wiki_icon_update]
+//		if (scriptId == 1699 || scriptId == 3305) { //1699
+//			Widget worldMapOrb = client.getWidget(160, 48);
+//			Widget wikiBanner = client.getWidget(ComponentID.MINIMAP_WIKI_BANNER_PARENT);
+//			if (worldMapOrb != null &&
+//					wikiBanner != null &&
+//					(worldMapOrb.getOriginalX() == 0 || wikiBanner.getOriginalX() == 0)
+//			) {
+//				setWidgetCoordinates(worldMapOrb, 23, 109);
+//				setWidgetCoordinates(wikiBanner, 21, 129);
+//			}
+//		}
+//	}
+//}

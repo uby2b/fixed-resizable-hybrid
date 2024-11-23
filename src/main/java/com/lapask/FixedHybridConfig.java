@@ -50,4 +50,15 @@ public interface FixedHybridConfig extends Config
 	{
 		return 503;
 	}
+
+	@ConfigItem(
+			keyName = "keepSixteenByNine",
+			name = "Keep 16:9 Aspect Ratio",
+			description = "Set's the aspect ratio of the window size based on Client Height to be 16:9 (good for 1920x1080 monitors)",
+			position = 5
+	)
+	default boolean keepSixteenByNine()
+	{
+		return true;
+	}
 }
