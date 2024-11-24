@@ -14,7 +14,7 @@
   - Enable the **Stretched Mode** plugin with 100% scaling option.
     - This prevents any gaps from separating the inventory from the minimap
   - Use the **GPU plugin** with UI scaling setting set to "xBR"
-    - This might not be everbody's cup of tea, but it helps mask any scaling artifacts when not in integer scaling mode.
+    - This might not be everybody's cup of tea, but it helps mask any scaling artifacts when not in integer scaling mode.
   - If you don't want to use the stretched mode plugin, you need to make sure the height of your client is set to 503 pixels (minimum height).
     - This is to prevent any gaps from being created.
     - You can set the height manually in the RuneLite settings.
