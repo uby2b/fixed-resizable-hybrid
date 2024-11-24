@@ -16,7 +16,6 @@ import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.util.HotkeyListener;
 import java.awt.*;
 import java.util.*;
@@ -24,17 +23,17 @@ import java.util.List;
 
 @Slf4j
 @PluginDescriptor(
-		name = "Fixed Hybrid",
-		description = "Automatically resizes the client when enabled",
-		tags = {"resize", "client", "fixed"}
+		name = "Fixed Resizable Hybrid",
+		description = "Skins the \"Resizable - Classic Layout\" to match fixed mode.",
+		tags = {"resize", "resizable", "classic", "fixed", "widescreen", "legacy", "hybrid"}
 )
-public class FixedHybrid extends Plugin
+public class FixedResizableHybridPlugin extends Plugin
 {
 	@Inject
 	private Client client;
 
 	@Inject
-	private FixedHybridConfig config;
+	private FixedResizableHybridConfig config;
 
 	@Inject
 	private ConfigManager configManager;
@@ -56,9 +55,9 @@ public class FixedHybrid extends Plugin
 	private final HashMap<Integer, WidgetState> originalStates = new HashMap<>();
 
 	@Provides
-	FixedHybridConfig provideConfig(ConfigManager configManager)
+	FixedResizableHybridConfig provideConfig(ConfigManager configManager)
 	{
-		return configManager.getConfig(FixedHybridConfig.class);
+		return configManager.getConfig(FixedResizableHybridConfig.class);
 	}
 
 	@Subscribe
@@ -131,7 +130,7 @@ public class FixedHybrid extends Plugin
 			gameClientLayoutChanged();
 		}
 	}
-	// Calculates 16:9 dimensions based on the player's client height
+	// Calculates 16:9 dimensions based on the client height
 	// Used in when config.useSixteenByNine() is enabled
 	private Dimension calcSixteenByNineDimensions(){
 		Dimension stretchedDimensions = client.getStretchedDimensions();
@@ -171,7 +170,6 @@ public class FixedHybrid extends Plugin
 		if (config.useSixteenByNine()){
 			Dimension newDimension = calcSixteenByNineDimensions();
 			if (newDimension != null) {
-				log.info("resizeSixteenByNine(). newDimension: {} x {}", newDimension.width,newDimension.height);
 				resizeClient(newDimension);
 			}
 		}
@@ -179,7 +177,7 @@ public class FixedHybrid extends Plugin
 
 	// Initializes the plugin by modifying necessary widgets and creating custom sprites.
 	// Ensures the minimap, inventory, and viewport are properly adjusted for fixed mode.
-	// This function is invoked when the game client layout is determined to be valid.
+	// Also resizes 16:9 if config option is true.
 	private void initializePlugin()
 	{
 		widgetsModified = true;
@@ -187,11 +185,6 @@ public class FixedHybrid extends Plugin
 		createFixedSprites();
 		resizeRenderViewport();
 		resizeSixteenByNine();
-	}
-
-	// Overloaded function to allow for resetLast to be omitted.
-	private void saveWidgetState(Widget widget) {
-		saveWidgetState(widget,false);
 	}
 
 	// Saves the widget state under these conditions:
@@ -224,6 +217,11 @@ public class FixedHybrid extends Plugin
 		);
 		originalStates.put(widgetId, widgetState);
 	}
+	// Overloaded function to allow for resetLast to be omitted.
+	private void saveWidgetState(Widget widget) {
+		saveWidgetState(widget,false);
+	}
+
 	// Determines the current game client layout mode.
 	//
 	// @return 1 if the layout is Fixed mode.
@@ -633,8 +631,8 @@ public class FixedHybrid extends Plugin
 			}
 		}
 	}
-	// Sets up the widget coordinates and bounds on the inventory panel prior to creating the fixed mode sprites and
-	//     modifying the existing inventory sprites.
+	// Sets up the coordinates and bounds on the inventory panel widget prior to creating the fixed background sprites
+	// and prior to modifying the existing inventory sprites.
 	public void inventoryWidgetBoundsFix() {
 		Widget invParent = client.getWidget(161,97);
 		if (invParent != null) {
@@ -708,8 +706,9 @@ public class FixedHybrid extends Plugin
 			invViewportInterfaceController.revalidate();
 		}
 	}
+
 	// Resizes the main viewport of the game so that no rendering occurs underneath the minimap/inventory.
-	// This also subsequently centers the camera properly, one of my main annoyances with the original resizable mode
+	// This also consequently centers the camera properly, one of my main annoyances with the original resizable mode
 	public void resizeRenderViewport(){
 		Widget mainViewport = client.getWidget(161,91);
 		if (mainViewport != null){
@@ -720,7 +719,8 @@ public class FixedHybrid extends Plugin
 			mainViewport.revalidate();
 		}
 	}
-	// Reset's the plugins changes on the render viewport back to the original full screen resizable mode.
+
+	// Reset's the plugin's changes on the render viewport back to the original fullscreen resizable mode.
 	// Called during the resetWidgets() function.
 	public void resetRenderViewport(){
 		Widget mainViewport = client.getWidget(161,91);

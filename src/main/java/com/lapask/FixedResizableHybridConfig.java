@@ -5,8 +5,8 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.Keybind;
 
-@ConfigGroup("fixedhybrid")
-public interface FixedHybridConfig extends Config
+@ConfigGroup("fixedresizablehybrid")
+public interface FixedResizableHybridConfig extends Config
 {
 	@ConfigItem(
 			keyName = "resizeTrigger",
@@ -21,13 +21,13 @@ public interface FixedHybridConfig extends Config
 
 	@ConfigItem(
 			keyName = "useSixteenByNine",
-			name = "Use 16:9 Aspect Ratio",
+			name = "16:9 Aspect Ratio Resize",
 			description = "Recommended to use with Stretched Mode Plugin at Scaling 100%. Reset this setting if your window size changes.",
 			position = 3
 	)
 	default boolean useSixteenByNine()
 	{
-		return true;
+		return false;
 	}
 
 }

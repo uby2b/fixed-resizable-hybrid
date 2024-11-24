@@ -3,11 +3,11 @@ package com.lapask;
 import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;
 
-public class FixedHybridTest
+public class FixedResizableHybridTest
 {
 	public static void main(String[] args) throws Exception
 	{
-		ExternalPluginManager.loadBuiltin(FixedHybrid.class);
+		ExternalPluginManager.loadBuiltin(FixedResizableHybridPlugin.class);
 
 		RuneLite.main(args);
 	}
