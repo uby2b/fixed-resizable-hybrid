@@ -30,7 +30,6 @@
 ## Future Plans
 - Adding more customizable config settings.
   - For example, adding config options for user-specified aspect ratio resizing.
-- Adding some sort of gap filling widget between the minimap and inventory to prevent render persistence when the user's client dimensions and/or stretched mode settings don't ensure that the gap is filled automatically.
 ---
 ## Known Compatability Issues
 It's highly unlikely that any plugins which reskin the game's interface will work. (E.g. Interface Styles or Resource Packs Plugin).

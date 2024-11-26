@@ -17,5 +17,15 @@ public interface FixedResizableHybridConfig extends Config
 	{
 		return false;
 	}
+	@ConfigItem(
+			keyName = "fillGapBorders",
+			name = "Gap Borders",
+			description = "For atypical aspect ratios or users who don't use stretched mode, this adds borders to the gap between the inventory and minimap",
+			position = 2
+	)
+	default boolean fillGapBorders()
+	{
+		return true;
+	}
 
 }

@@ -90,7 +90,9 @@ public class FixedResizableHybridPlugin extends Plugin
 		//Resize client if config option is enabled
 		if (event.getKey().equals("useSixteenByNine") && config.useSixteenByNine()){
 			clientThread.invoke(this::resizeSixteenByNine);
-
+		} else if (event.getKey().equals("fillGapBorders")){
+			resetWidgets();
+			queuePluginInitialization();
 		}
 	}
 
@@ -170,6 +172,7 @@ public class FixedResizableHybridPlugin extends Plugin
 		createFixedSprites();
 		resizeRenderViewport();
 		resizeSixteenByNine();
+		createGapWidgets();
 	}
 
 	// Saves the widget state under these conditions:
@@ -247,7 +250,7 @@ public class FixedResizableHybridPlugin extends Plugin
 		int newGameClientLayout = getGameClientLayout();
 		if (newGameClientLayout == 2){
 			queuePluginInitialization();
-		} else { //} else if (newGameClientLayout == 1 || newGameClientLayout == 3){
+		} else {
 			resetWidgets();
 		}
 	}
@@ -433,7 +436,10 @@ public class FixedResizableHybridPlugin extends Plugin
 		if (invDynamicParent!=null){
 			invDynamicParent.deleteAllChildren();
 		}
-
+		Widget gapWidgetParent = client.getWidget(classicResizableGroupId,0);
+		if (gapWidgetParent!=null){
+			gapWidgetParent.deleteAllChildren();
+		}
 	}
 
 	// Resizes the client to the specified dimension. For some reason, the runelite client doesn't update the config
@@ -449,7 +455,7 @@ public class FixedResizableHybridPlugin extends Plugin
 		Dimension currentSize = configManager.getConfiguration("runelite", "gameSize", Dimension.class);
 		if (processedGameSize.equals(currentSize)){
 			Dimension processedGameSizePlus1 = new Dimension(processedWidth + 1, processedHeight);
-			log.info("Resized to {} x {}", processedWidth+1, processedHeight);
+			//log.info("Resized to {} x {}", processedWidth+1, processedHeight);
 			configManager.setConfiguration("runelite", "gameSize", processedGameSizePlus1);
 			resizeOnGameTick = true;
 		}
@@ -621,7 +627,47 @@ public class FixedResizableHybridPlugin extends Plugin
 			}
 		}
 	}
+	// Fills in the gap between the inventory and the minimap to prevent render persistence due to there not being any widgets
+	// in those locations.
+	private void createGapWidgets(){
+		Widget gapBackdropParent = client.getWidget(161,0);
+		if (gapBackdropParent!=null) {
+			Widget gapBackdrop = gapBackdropParent.createChild(5);
+			gapBackdrop.setHeightMode(1);
+			gapBackdrop.setOriginalWidth(249); //249
+			gapBackdrop.setSpriteId(897); //297 897
+			gapBackdrop.setXPositionMode(2);
+			gapBackdrop.setSpriteTiling(true);
+			gapBackdrop.revalidateScroll();
+		}
 
+		if (config.fillGapBorders()) {
+			Widget invTopBorderParent = client.getWidget(161, 0);
+			if (invTopBorderParent != null) {
+				Widget invTopBorder = invTopBorderParent.createChild(5);
+				invTopBorder.setXPositionMode(2);
+				invTopBorder.setYPositionMode(2);
+				invTopBorder.setOriginalY(336);
+				invTopBorder.setOriginalWidth(249);
+				invTopBorder.setOriginalHeight(21);
+				invTopBorder.setSpriteId(173);// //297 //314/173
+				invTopBorder.setSpriteTiling(true);
+				invTopBorder.revalidateScroll();
+			}
+
+			Widget minimapBottomBorderParent = client.getWidget(161, 22);
+			if (minimapBottomBorderParent!=null) {
+				Widget minimapBottomBorder = minimapBottomBorderParent.createChild(5);
+				minimapBottomBorder.setOriginalY(153);
+				minimapBottomBorder.setOriginalWidth(249);
+				minimapBottomBorder.setOriginalHeight(21);
+				minimapBottomBorder.setSpriteId(314);
+				minimapBottomBorder.setSpriteTiling(true);
+				minimapBottomBorder.setOriginalHeight(21);
+				minimapBottomBorder.revalidateScroll();
+			}
+		}
+	}
 	// Sets up the coordinates and bounds on the inventory panel widget prior to creating the fixed background sprites
 	// and prior to modifying the existing inventory sprites.
 	private void inventoryWidgetBoundsFix() {
