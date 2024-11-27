@@ -121,7 +121,6 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Used in when config.useSixteenByNine() is enabled
 	private Dimension calcSixteenByNineDimensions(){
 		Dimension stretchedDimensions = client.getStretchedDimensions();
-		//int resizableScalingPercent = configManager.getConfiguration("stretchedmode", "scalingFactor", Integer.class);
 		Widget mainViewport = client.getWidget(classicResizableGroupId,34);
 		if (mainViewport!=null && !mainViewport.isHidden()) {
 			mainViewport.revalidateScroll();
@@ -246,14 +245,13 @@ public class FixedResizableHybridPlugin extends Plugin
 	 // If the layout changes to classic-resizable, the plugin is initialized.
 	 // For other layouts (fixed or modern-resizable), widgets are reset to avoid
 	 // interference caused by switching layouts.
-	private void gameClientLayoutChanged(){
-		int newGameClientLayout = getGameClientLayout();
-		if (newGameClientLayout == 2){
-			queuePluginInitialization();
-		} else {
-			resetWidgets();
-		}
-	}
+	 private void gameClientLayoutChanged() {
+		 if (getGameClientLayout() == 2) {
+			 queuePluginInitialization();
+		 } else {
+			 resetWidgets();
+		 }
+	 }
 
 
 	 // Adjusts the positions of the World Map, Wiki, Store, and Activity Adviser orbs to match fixed mode alignment.
@@ -268,7 +266,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	 // - Sets or resets their positions to match the fixed mode layout.
 	private void fixWorldMapWikiStoreActAdvOrbs(){
 		if (getGameClientLayout() == 2) {
-			Widget worldMapOrb = client.getWidget(ComponentID.MINIMAP_WORLDMAP_ORB); 
+			Widget worldMapOrb = client.getWidget(ComponentID.MINIMAP_WORLDMAP_ORB);
 			Widget wikiBanner = client.getWidget(ComponentID.MINIMAP_WIKI_BANNER_PARENT);
 			Widget storeOrb = client.getWidget(160, 42);
 			Widget activityAdviserOrb = client.getWidget(160, 47);
@@ -283,59 +281,55 @@ public class FixedResizableHybridPlugin extends Plugin
 			}
 			if (storeOrb != null && storeOrb.getOriginalX() == 85) {
 				saveWidgetState(storeOrb);
-				setWidgetParameters(client.getWidget(160, 42), 0+13, 83-6, 34, 34, 2, 0, 0, 0);
+				setWidgetParameters(storeOrb, 0+13, 83-6, 34, 34, 2, 0, 0, 0);
 			}
 			if (activityAdviserOrb != null && activityAdviserOrb.getOriginalX() == 55) {
 				saveWidgetState(activityAdviserOrb);
-				setWidgetParameters(client.getWidget(160, 47), 0+13, 50-6, 34, 34, 2, 0, 0, 0);
+				setWidgetParameters(activityAdviserOrb, 0+13, 50-6, 34, 34, 2, 0, 0, 0);
 			}
 		}
 	}
 
 	// Runs from onScriptPostFired() for the scriptId == 909 which resets the bounding boxes of game interfaces (e.g.
 	// banks, deposit boxes, settings, etc). This function sets those back to their modified states.
-	private void fixNestedInterfaceDimensions(){
-		if (widgetsModified) {
-			Widget clickWindow = client.getWidget(classicResizableGroupId, 92);
-			if (clickWindow != null) {
-				clickWindow.setXPositionMode(0);
-				clickWindow.revalidate();
-				Widget[] clickWindowSChildren = clickWindow.getStaticChildren();
-				for (Widget clickWindowSChild : clickWindowSChildren) {
-					if (clickWindowSChild.getOriginalWidth() == 250)
-					{
-						clickWindowSChild.setOriginalWidth(0);
-					}
-					clickWindowSChild.revalidateScroll();
+	private void fixNestedInterfaceDimensions() {
+		if (!widgetsModified) return;
+
+		Widget clickWindow = client.getWidget(classicResizableGroupId, 92);
+		if (clickWindow != null) {
+			clickWindow.setXPositionMode(0);
+			clickWindow.revalidate();
+			for (Widget child : clickWindow.getStaticChildren()) {
+				if (child.getOriginalWidth() == 250) {
+					child.setOriginalWidth(0);
 				}
+				child.revalidateScroll();
 			}
-			Widget oldSchoolBoxParent = client.getWidget(classicResizableGroupId, 94);
-			if (oldSchoolBoxParent != null && oldSchoolBoxParent.getXPositionMode() == 1){
-				oldSchoolBoxParent.setXPositionMode(0);
-				oldSchoolBoxParent.revalidate();
+		}
+
+		Widget oldSchoolBox = client.getWidget(oldSchoolBoxId);
+		if (oldSchoolBox != null) {
+			Widget parent = oldSchoolBox.getParent();
+			if (parent != null && parent.getXPositionMode() == 1) {
+				parent.setXPositionMode(0);
+				parent.revalidate();
 			}
-			Widget oldSchoolBox = client.getWidget(oldSchoolBoxId);
-			if (oldSchoolBox != null){
-				if (oldSchoolBox.getOriginalWidth() == 250){
-					oldSchoolBox.setOriginalWidth(0);
-					oldSchoolBox.revalidate();
-				}
-				Widget[] oldSchoolBoxChildren = oldSchoolBox.getStaticChildren();
-				for (Widget oldSchoolBoxChild : oldSchoolBoxChildren){
-					oldSchoolBoxChild.revalidateScroll();
-				}
+			if (oldSchoolBox.getOriginalWidth() == 250) {
+				oldSchoolBox.setOriginalWidth(0);
+				oldSchoolBox.revalidate();
+			}
+			for (Widget child : oldSchoolBox.getStaticChildren()) {
+				child.revalidateScroll();
 			}
 		}
 	}
 	// Runs from onScriptPostFired() for the script which fires and resets the inventory background sprite
-	private void fixInvBackground(){
+	private void fixInvBackground() {
 		if (widgetsModified && getGameClientLayout() == 2) {
 			Widget invBackground = client.getWidget(classicResizableGroupId, 38);
-			if (invBackground != null){
-				if (invBackground.getSpriteId() == 897) {
-					saveWidgetState(invBackground);
-					invBackground.setSpriteId(1031);
-				}
+			if (invBackground != null && invBackground.getSpriteId() == 897) {
+				saveWidgetState(invBackground);
+				invBackground.setSpriteId(1031);
 			}
 		}
 	}
@@ -344,9 +338,11 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Runs whenever the user logs out, hops worlds, or changes the game client layout to something other than classic-resizable
 	// There are a few widgets which need to be revalidated last to make sure everything resets properly, which is done last.
 	private void resetWidgets() {
-		removeAddedWidgets();
-		resetRenderViewport();
-		resetOriginalStates(); // sets widgetModified to false too
+		clientThread.invoke(()->{
+			removeAddedWidgets();
+			resetRenderViewport();
+			resetOriginalStates(); // sets widgetModified to false too
+		});
 	}
 	private void resetOriginalStates(){
 		List<Map.Entry<Integer, WidgetState>> resetLastEntries = new ArrayList<>();
@@ -428,14 +424,19 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	// Removes all widgets that plugin created (sprites surrounding the minimap/inventory)
 	public void removeAddedWidgets(){
-		Widget minimapDynamicParent = client.getWidget(classicResizableGroupId,22);
-		if (minimapDynamicParent!=null){
-			minimapDynamicParent.deleteAllChildren();
+		//Deletes added minimap sprites + bottom border sprite
+		Widget minimapDrawArea = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP_DRAW_AREA);
+		if (minimapDrawArea != null && minimapDrawArea.getParent() != null) {
+			minimapDrawArea.getParent().deleteAllChildren();
 		}
-		Widget invDynamicParent = client.getWidget(classicResizableGroupId,97);
+
+		// Deletes added inventory sprites
+		Widget invDynamicParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_INVENTORY_PARENT);
 		if (invDynamicParent!=null){
 			invDynamicParent.deleteAllChildren();
 		}
+
+		// Deletes added gap sprites
 		Widget gapWidgetParent = client.getWidget(classicResizableGroupId,0);
 		if (gapWidgetParent!=null){
 			gapWidgetParent.deleteAllChildren();
@@ -504,10 +505,10 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Positions the all the minimap elements to align with fixed mode, and saves the original widget parameters for
 	//     resetWidgets() later. Could definitely be cleaned up.
 	private void repositionMinimapWidgets(){
-		Widget minimapWidget = client.getWidget(classicResizableGroupId,95);
+		Widget minimapWidget = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP);
 		Widget minimapSprite = client.getWidget(classicResizableGroupId, 32);
-		Widget minimapWidgetOrbsParent = client.getWidget(classicResizableGroupId,33);
-		Widget minimapWidgetOrbsInterface = client.getWidget(160,0);
+		Widget minimapWidgetOrbsParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP_ORB_HOLDER);
+		Widget minimapWidgetOrbsInterface = client.getWidget(ComponentID.MINIMAP_CONTAINER);
 		if (client.isResized() &&
 				minimapWidget != null &&
 				minimapSprite != null &&
@@ -549,8 +550,9 @@ public class FixedResizableHybridPlugin extends Plugin
 				int childId = widgetAdjustment[0];
 				int newX = widgetAdjustment[1];
 				int newY = widgetAdjustment[2];
-
-				Widget wdgToAdj = client.getWidget(classicResizableGroupId, childId);
+				Widget wdgToAdj = (widgetAdjustment[0] == 30)
+						? client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP_DRAW_AREA)
+						: client.getWidget(classicResizableGroupId, childId);
 				if (wdgToAdj != null && wdgToAdj.getXPositionMode() == 2) {
 					saveWidgetState(wdgToAdj,true);
 					// Set the position mode to absolute
@@ -572,9 +574,9 @@ public class FixedResizableHybridPlugin extends Plugin
 			setWidgetCoordinates(ComponentID.MINIMAP_RUN_ORB, 10, 97);
 			//spec orb
 			setWidgetCoordinates(ComponentID.MINIMAP_SPEC_ORB, 32, 122);
-			//compass orb clickbox
+			//compass orb clickbox, doesn't have have componentID
 			setWidgetCoordinates(client.getWidget(classicResizableGroupId, 31), 26, 1);
-			//compass orb viewbox
+			//compass orb viewbox, doesn't have have componentID
 			setWidgetCoordinates(client.getWidget(classicResizableGroupId, 29), 28, 3);
 			//world map orb, wiki banner, store orb, and activity adviser orb all handled under this function
 			fixWorldMapWikiStoreActAdvOrbs();
@@ -584,40 +586,48 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Creates new widgets (defined by newSpriteConfigs) that weren't originally loaded in classic-resizable
 	private void createFixedSprites() {
 		// Get the parent widget the sprites should be under
-		Widget minimapParentWidget = client.getWidget(classicResizableGroupId, 22);
-		Widget inventoryParentWidget = client.getWidget(classicResizableGroupId,97);
+		Widget minimapDrawArea = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP_DRAW_AREA);
+		Widget inventoryParentWidget = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_INVENTORY_PARENT);
 		// Define the configurations for all the sprites to be created.
 		// Each row represents a sprite with the following columns:
-		// [groupId, childId, type, spriteId, originalX, originalY, originalWidth, originalHeight, xPositionMode, yPositionMode, widthMode, heightMode]
-		int[][] newSpriteConfigs = {
-				{classicResizableGroupId, 22, 5, 1182, 29, 4, 172, 156, 0, 0, 0, 0, 0},  // centerMinimapSprite
-				{classicResizableGroupId, 22, 5, 1611, 0, 160, 249, 8, 1, 0, 0, 0, 0},   // bottomMinimapSprite
-				{classicResizableGroupId, 22, 5, 1037, 0, 4, 29, 156, 0, 0, 0, 0, 0},    // leftMinimapSprite
-				{classicResizableGroupId, 22, 5, 1038, 0, 4, 48, 156, 2, 0, 0, 0, 0},    // rightMinimapSprite
-				{classicResizableGroupId, 22, 5, 1039, 48, 0, 717, 4, 2, 0, 0, 0, 0},    // topThinBarRight
-				{classicResizableGroupId, 22, 5, 1441, 0, 0, 48, 4, 2, 0, 0, 0, 0},      // topThinBarLeft
-				{classicResizableGroupId, 97, 5, 1035, 0, 37, 28, 261, 2, 2, 0, 0, 0}, // right inv column
-				{classicResizableGroupId, 97, 5, 1033, 0, 38, 31, 133, 0, 0, 0, 0, 0}, // left inv column top half
-				{classicResizableGroupId, 97, 5, 1034, 3, 171, 28, 128, 0, 0, 0, 0, 0},  // left inv column bottom half
-				{classicResizableGroupId, 97, 5, 1033, 0, 0, 3, 170, 0, 2, 0, 0, 0} // left tiny strip to the left of bottom half
-		};
-		if (minimapParentWidget != null && inventoryParentWidget != null) {
+		// [widget, type, spriteId, originalX, originalY, originalWidth, originalHeight, xPositionMode, yPositionMode, widthMode, heightMode, noclickthrough]
+		if (minimapDrawArea != null && minimapDrawArea.getParent() != null && inventoryParentWidget != null) {
+			int[][] newSpriteConfigs = {
+					{1, 5, 1182, 29, 4, 172, 156, 0, 0, 0, 0, 0},  // centerMinimapSprite
+					{1, 5, 1611, 0, 160, 249, 8, 1, 0, 0, 0, 0},   // bottomMinimapSprite
+					{1, 5, 1037, 0, 4, 29, 156, 0, 0, 0, 0, 0},    // leftMinimapSprite
+					{1, 5, 1038, 0, 4, 48, 156, 2, 0, 0, 0, 0},    // rightMinimapSprite
+					{1, 5, 1039, 48, 0, 717, 4, 2, 0, 0, 0, 0},    // topThinBarRight
+					{1, 5, 1441, 0, 0, 48, 4, 2, 0, 0, 0, 0},      // topThinBarLeft
+					{2, 5, 1035, 0, 37, 28, 261, 2, 2, 0, 0, 0}, // right inv column
+					{2, 5, 1033, 0, 38, 31, 133, 0, 0, 0, 0, 0}, // left inv column top half
+					{2, 5, 1034, 3, 171, 28, 128, 0, 0, 0, 0, 0},  // left inv column bottom half
+					{2, 5, 1033, 0, 0, 3, 170, 0, 2, 0, 0, 0} // left tiny strip to the left of bottom half
+			};
 			//Ensure the bounds on the parent container(s) are properly prepared.
 			inventoryWidgetBoundsFix();
+
 			// Create widgets using the configurations
+			Widget minimapParentWidget = minimapDrawArea.getParent(); // same as client.getWidget(161,22); but uses ComponentID reference
 			for (int[] newSpriteConfig : newSpriteConfigs) {
-				Widget parentWidget = client.getWidget(newSpriteConfig[0],newSpriteConfig[1]);
+				Widget parentWidget = null;
+				if (newSpriteConfig[0]==1){
+					parentWidget = minimapParentWidget;
+				} else if (newSpriteConfig[0]==2){
+					parentWidget = inventoryParentWidget;
+				}
+				// extra null check here in case we add new added widgets later, should never be null given current newSpriteConfigs
 				if (parentWidget!=null) {
-					Widget minimapSprite = parentWidget.createChild(newSpriteConfig[2]);
-					minimapSprite.setSpriteId(newSpriteConfig[3]);
-					minimapSprite.setOriginalX(newSpriteConfig[4]);
-					minimapSprite.setOriginalY(newSpriteConfig[5]);
-					minimapSprite.setOriginalWidth(newSpriteConfig[6]);
-					minimapSprite.setOriginalHeight(newSpriteConfig[7]);
-					minimapSprite.setXPositionMode(newSpriteConfig[8]);
-					minimapSprite.setYPositionMode(newSpriteConfig[9]);
-					minimapSprite.setWidthMode(newSpriteConfig[10]);
-					minimapSprite.setHeightMode(newSpriteConfig[11]);
+					Widget minimapSprite = parentWidget.createChild(newSpriteConfig[1]);
+					minimapSprite.setSpriteId(newSpriteConfig[2]);
+					minimapSprite.setOriginalX(newSpriteConfig[3]);
+					minimapSprite.setOriginalY(newSpriteConfig[4]);
+					minimapSprite.setOriginalWidth(newSpriteConfig[5]);
+					minimapSprite.setOriginalHeight(newSpriteConfig[6]);
+					minimapSprite.setXPositionMode(newSpriteConfig[7]);
+					minimapSprite.setYPositionMode(newSpriteConfig[8]);
+					minimapSprite.setWidthMode(newSpriteConfig[9]);
+					minimapSprite.setHeightMode(newSpriteConfig[10]);
 					if (newSpriteConfig[11] == 1) {
 						minimapSprite.setNoClickThrough(true);
 					}
@@ -630,7 +640,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Fills in the gap between the inventory and the minimap to prevent render persistence due to there not being any widgets
 	// in those locations.
 	private void createGapWidgets(){
-		Widget gapBackdropParent = client.getWidget(161,0);
+		Widget gapBackdropParent = client.getWidget(classicResizableGroupId,0);
 		if (gapBackdropParent!=null) {
 			Widget gapBackdrop = gapBackdropParent.createChild(5);
 			gapBackdrop.setHeightMode(1);
@@ -642,7 +652,7 @@ public class FixedResizableHybridPlugin extends Plugin
 		}
 
 		if (config.fillGapBorders()) {
-			Widget invTopBorderParent = client.getWidget(161, 0);
+			Widget invTopBorderParent = client.getWidget(classicResizableGroupId, 0);
 			if (invTopBorderParent != null) {
 				Widget invTopBorder = invTopBorderParent.createChild(5);
 				invTopBorder.setXPositionMode(2);
@@ -654,10 +664,10 @@ public class FixedResizableHybridPlugin extends Plugin
 				invTopBorder.setSpriteTiling(true);
 				invTopBorder.revalidateScroll();
 			}
-
-			Widget minimapBottomBorderParent = client.getWidget(161, 22);
-			if (minimapBottomBorderParent!=null) {
-				Widget minimapBottomBorder = minimapBottomBorderParent.createChild(5);
+			// Bottom border for the minimap widget (only visible with gap);
+			Widget minimapDrawArea = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP_DRAW_AREA);
+			if (minimapDrawArea!=null && minimapDrawArea.getParent() != null) {
+				Widget minimapBottomBorder = minimapDrawArea.getParent().createChild(5); // same as client.getWidget(161,22).createChild(5) but uses ComponentID reference
 				minimapBottomBorder.setOriginalY(153);
 				minimapBottomBorder.setOriginalWidth(249);
 				minimapBottomBorder.setOriginalHeight(21);
@@ -671,7 +681,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Sets up the coordinates and bounds on the inventory panel widget prior to creating the fixed background sprites
 	// and prior to modifying the existing inventory sprites.
 	private void inventoryWidgetBoundsFix() {
-		Widget invParent = client.getWidget(classicResizableGroupId,97);
+		Widget invParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_INVENTORY_PARENT);
 		if (invParent != null) {
 			saveWidgetState(invParent,true);
 			invParent.setOriginalWidth(249);
@@ -736,7 +746,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			invTopTabsParent.revalidate();
 		}
 
-		Widget invViewportInterfaceController = client.getWidget(classicResizableGroupId, 73);
+		Widget invViewportInterfaceController = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_INTERFACE_CONTAINER);
 		if (invViewportInterfaceController != null) {
 			saveWidgetState(invViewportInterfaceController);
 			invViewportInterfaceController.setOriginalX(26 + 2);
