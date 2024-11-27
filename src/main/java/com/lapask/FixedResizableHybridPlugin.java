@@ -55,15 +55,6 @@ public class FixedResizableHybridPlugin extends Plugin
 		return configManager.getConfig(FixedResizableHybridConfig.class);
 	}
 
-	@Subscribe
-	public void onGameTick(GameTick gameTick) {
-		if (resizeOnGameTick){
-			Dimension configDimensions = calcSixteenByNineDimensions();
-			resizeClient(configDimensions);
-			resizeOnGameTick = false;
-		}
-	}
-
 	@Override
 	protected void startUp() throws Exception
 	{
@@ -117,6 +108,16 @@ public class FixedResizableHybridPlugin extends Plugin
 			gameClientLayoutChanged();
 		}
 	}
+
+	@Subscribe
+	public void onGameTick(GameTick gameTick) {
+		if (resizeOnGameTick){
+			Dimension configDimensions = calcSixteenByNineDimensions();
+			resizeClient(configDimensions);
+			resizeOnGameTick = false;
+		}
+	}
+
 	// Calculates 16:9 dimensions based on the client height
 	// Used in when config.useSixteenByNine() is enabled
 	private Dimension calcSixteenByNineDimensions(){
