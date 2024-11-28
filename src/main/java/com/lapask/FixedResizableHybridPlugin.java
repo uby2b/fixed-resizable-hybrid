@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.GameState;
+import net.runelite.api.Varbits;
 import net.runelite.api.events.*;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.InterfaceID;
@@ -19,6 +20,8 @@ import net.runelite.client.plugins.PluginDescriptor;
 import java.awt.*;
 import java.util.*;
 import java.util.List;
+import net.runelite.client.ui.overlay.OverlayManager;
+
 
 @Slf4j
 @PluginDescriptor(
@@ -28,6 +31,7 @@ import java.util.List;
 )
 public class FixedResizableHybridPlugin extends Plugin
 {
+
 	@Inject
 	private Client client;
 
@@ -43,6 +47,12 @@ public class FixedResizableHybridPlugin extends Plugin
 	@Inject
 	private KeyManager keyManager;
 
+	@Inject
+	private OverlayManager overlayManager;
+
+	@Inject
+	private FixedResizableHybridGapOverlay gapOverlay;
+
 	private boolean resizeOnGameTick = false;
 	boolean widgetsModified = false;
 	private final HashMap<Integer, WidgetState> originalStates = new HashMap<>();
@@ -53,6 +63,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	FixedResizableHybridConfig provideConfig(ConfigManager configManager)
 	{
 		return configManager.getConfig(FixedResizableHybridConfig.class);
+
 	}
 
 	@Override
@@ -131,9 +142,6 @@ public class FixedResizableHybridPlugin extends Plugin
 		}
 		return null;
 	}
-	private void setResizableScaling(int resizableScalingPercent) {
-		configManager.setConfiguration("stretchedmode", "scalingFactor", resizableScalingPercent);
-	}
 
 	// Will continue trying to initialize until the GameState has been stabilized as logged in (e.g. layout == 2 or 3)
 	// For some reason you can't use invoke() here or else it will delete the minimap orbs when you change interface mode.
@@ -172,7 +180,8 @@ public class FixedResizableHybridPlugin extends Plugin
 		createFixedSprites();
 		resizeRenderViewport();
 		resizeSixteenByNine();
-		createGapWidgets();
+		overlayManager.add(gapOverlay);
+		fixNestedInterfaceDimensions();
 	}
 
 	// Saves the widget state under these conditions:
@@ -181,6 +190,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	//    - prevents overwriting of the vanilla state when functions are called more than once
 	// The resetLast parameter is specified for the function resetWidgets() to allow for some saved widgets
 	// to be reset after the others, preventing issue where parent widgets needs to be revalidated again.
+	private void saveWidgetState(Widget widget) { saveWidgetState(widget,false); }
 	private void saveWidgetState(Widget widget, boolean resetLast) {
 		if (widget == null) {
 			return;
@@ -204,10 +214,6 @@ public class FixedResizableHybridPlugin extends Plugin
 				resetLast
 		);
 		originalStates.put(widgetId, widgetState);
-	}
-	// Overloaded function to allow for resetLast to be omitted.
-	private void saveWidgetState(Widget widget) {
-		saveWidgetState(widget,false);
 	}
 
 	// Determines the current game client layout mode.
@@ -437,11 +443,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			invDynamicParent.deleteAllChildren();
 		}
 
-		// Deletes added gap sprites
-		Widget gapWidgetParent = client.getWidget(classicResizableGroupId,0);
-		if (gapWidgetParent!=null){
-			gapWidgetParent.deleteAllChildren();
-		}
+		overlayManager.remove(gapOverlay);
 	}
 
 	// Resizes the client to the specified dimension. For some reason, the runelite client doesn't update the config
@@ -638,47 +640,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			}
 		}
 	}
-	// Fills in the gap between the inventory and the minimap to prevent render persistence due to there not being any widgets
-	// in those locations.
-	private void createGapWidgets(){
-		Widget gapBackdropParent = client.getWidget(classicResizableGroupId,0);
-		if (gapBackdropParent!=null) {
-			Widget gapBackdrop = gapBackdropParent.createChild(5);
-			gapBackdrop.setHeightMode(1);
-			gapBackdrop.setOriginalWidth(249); //249
-			gapBackdrop.setSpriteId(897); //297 897
-			gapBackdrop.setXPositionMode(2);
-			gapBackdrop.setSpriteTiling(true);
-			gapBackdrop.revalidateScroll();
-		}
 
-		if (config.fillGapBorders()) {
-			Widget invTopBorderParent = client.getWidget(classicResizableGroupId, 0);
-			if (invTopBorderParent != null) {
-				Widget invTopBorder = invTopBorderParent.createChild(5);
-				invTopBorder.setXPositionMode(2);
-				invTopBorder.setYPositionMode(2);
-				invTopBorder.setOriginalY(336);
-				invTopBorder.setOriginalWidth(249);
-				invTopBorder.setOriginalHeight(21);
-				invTopBorder.setSpriteId(173);// //297 //314/173
-				invTopBorder.setSpriteTiling(true);
-				invTopBorder.revalidateScroll();
-			}
-			// Bottom border for the minimap widget (only visible with gap);
-			Widget minimapDrawArea = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP_DRAW_AREA);
-			if (minimapDrawArea!=null && minimapDrawArea.getParent() != null) {
-				Widget minimapBottomBorder = minimapDrawArea.getParent().createChild(5); // same as client.getWidget(161,22).createChild(5) but uses ComponentID reference
-				minimapBottomBorder.setOriginalY(153);
-				minimapBottomBorder.setOriginalWidth(249);
-				minimapBottomBorder.setOriginalHeight(21);
-				minimapBottomBorder.setSpriteId(314);
-				minimapBottomBorder.setSpriteTiling(true);
-				minimapBottomBorder.setOriginalHeight(21);
-				minimapBottomBorder.revalidateScroll();
-			}
-		}
-	}
 	// Sets up the coordinates and bounds on the inventory panel widget prior to creating the fixed background sprites
 	// and prior to modifying the existing inventory sprites.
 	private void inventoryWidgetBoundsFix() {
@@ -764,7 +726,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			// Width is set to the width of the inventory and minimap widgets because widthMode = 1 (subtracts
 			//     that value from the parent widget's dimensions).
 			mainViewport.setOriginalWidth(249);
-			mainViewport.revalidate();
+			mainViewport.revalidateScroll();
 		}
 	}
 

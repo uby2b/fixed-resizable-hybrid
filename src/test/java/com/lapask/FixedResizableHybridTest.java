@@ -8,7 +8,6 @@ public class FixedResizableHybridTest
 	public static void main(String[] args) throws Exception
 	{
 		ExternalPluginManager.loadBuiltin(FixedResizableHybridPlugin.class);
-
 		RuneLite.main(args);
 	}
 }
