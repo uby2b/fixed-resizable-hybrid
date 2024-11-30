@@ -47,7 +47,7 @@ public class FixedResizableHybridOverlay extends Overlay
 
         graphics.setColor(new Color(47, 42, 32));
         graphics.fill(overlayBounds);
-        if (config.fillGapBorders()) {
+        if (config.useGapBorders()) {
             Image gapBorder = ImageUtil.loadImageResource(FixedResizableHybridPlugin.class, "/border15px.png");
 
             // inventory gap border

@@ -1,6 +1,7 @@
 package com.lapask;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
+import com.lapask.config.ResizeBy;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
@@ -53,7 +54,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	private FixedResizableHybridOverlay enabledOverlays;
 
 	private boolean resizeOnGameTick = false;
-	boolean widgetsModified = false;
+	private boolean widgetsModified = false;
 	private final HashMap<Integer, WidgetState> originalStates = new HashMap<>();
 	private static final int classicResizableGroupId = InterfaceID.RESIZABLE_VIEWPORT;
 	private static final int oldSchoolBoxId = ComponentID.RESIZABLE_VIEWPORT_RESIZABLE_VIEWPORT_OLD_SCHOOL_BOX;
@@ -90,9 +91,11 @@ public class FixedResizableHybridPlugin extends Plugin
 		}
 		//Resize client if config option is enabled
 		String eventKey = event.getKey();
-		if (eventKey.equals("useSixteenByNine") && config.useSixteenByNine()){
-			clientThread.invoke(this::resizeSixteenByNine);
-		} else if (eventKey.equals("fillGapBorders") || eventKey.equals("isWideChatbox")){
+		if (eventKey.equals("aspectRatioResize") && config.aspectRatioResize()){
+			clientThread.invoke(this::resizeByAspectRatio);
+		} else if (eventKey.equals("fillGapBorders")
+				|| eventKey.equals("isWideChatbox")
+				|| eventKey.equals("chatboxViewportCentering")){
 			resetWidgets();
 			queuePluginInitialization();
 		}
@@ -141,72 +144,14 @@ public class FixedResizableHybridPlugin extends Plugin
 			default:
 				break;
 		}
-
-	}
-	private void widenChat(){
-		if (!config.isWideChatbox() || !widgetsModified || getGameClientLayout()!=2){return;}
-		Widget mainViewport = client.getWidget(classicResizableGroupId,91);
-		if (mainViewport==null){return;}
-		int wideChatboxWidth = mainViewport.getWidth();
-
-		Widget chatParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_CHATBOX_PARENT);//161.96
-		if (chatParent!=null) {
-			saveWidgetState(chatParent);
-			chatParent.setOriginalWidth(wideChatboxWidth);
-			chatParent.revalidateScroll();
-		}
-		Widget chatFrame = client.getWidget(ComponentID.CHATBOX_FRAME); //162.34
-		if (chatFrame!=null) {
-			saveWidgetState(chatFrame);
-			chatFrame.setOriginalWidth(wideChatboxWidth);
-			chatFrame.revalidateScroll();
-		}
-		Widget dialogueOptions = client.getWidget(ComponentID.DIALOG_OPTION_OPTIONS);
-		if (dialogueOptions!=null) {
-			saveWidgetState(dialogueOptions);
-			dialogueOptions.setOriginalX(0);
-			dialogueOptions.setXPositionMode(1);
-			dialogueOptions.getParent().revalidateScroll();
-		}
-		Widget reportAbuseDialogue = client.getWidget(ComponentID.REPORT_ABUSE_PARENT);
-		if (reportAbuseDialogue!=null){
-			Widget reportAbuseDialogueSprite = client.getWidget(875,1);
-			if (reportAbuseDialogueSprite!=null){
-				saveWidgetState(reportAbuseDialogueSprite);
-				saveWidgetState(reportAbuseDialogue);
-				reportAbuseDialogueSprite.setHidden(true);
-			}
-		}
-		//Center chat buttons on viewport
-		Widget chatButtons = client.getWidget(ComponentID.CHATBOX_BUTTONS); //162.1
-		if (chatButtons!=null) {
-			saveWidgetState(chatButtons);
-			chatButtons.setXPositionMode(1);
-			chatButtons.revalidateScroll();
-		}
 	}
 
 	@Subscribe
 	public void onGameTick(GameTick gameTick) {
-		if (resizeOnGameTick){
-			Dimension configDimensions = calcSixteenByNineDimensions();
-			resizeClient(configDimensions);
+		if (resizeOnGameTick) {
+			resizeByAspectRatio();
 			resizeOnGameTick = false;
 		}
-	}
-
-	// Calculates 16:9 dimensions based on the client height
-	// Used in when config.useSixteenByNine() is enabled
-	private Dimension calcSixteenByNineDimensions(){
-		Dimension stretchedDimensions = client.getStretchedDimensions();
-		Widget mainViewport = client.getWidget(classicResizableGroupId,34);
-		if (mainViewport!=null && !mainViewport.isHidden()) {
-			mainViewport.revalidateScroll();
-			int currentHeight = stretchedDimensions.height;
-			int calcWidth = 16 * currentHeight / 9;
-			return new Dimension(calcWidth, currentHeight);
-		}
-		return null;
 	}
 
 	// Will continue trying to initialize until the GameState has been stabilized as logged in (e.g. layout == 2 or 3)
@@ -219,21 +164,13 @@ public class FixedResizableHybridPlugin extends Plugin
 			// Uses getGameClientLayout() to determine when the game is ready to be initialized.
 			int gameClientLayout = getGameClientLayout();
 			if (gameClientLayout!=-1) {
-                if (gameClientLayout == 2) {
-                    initializePlugin();
-                }
-                return true;
+				if (gameClientLayout == 2) {
+					initializePlugin();
+				}
+				return true;
 			}
 			return false;
 		});
-	}
-	private void resizeSixteenByNine(){
-		if (config.useSixteenByNine()){
-			Dimension newDimension = calcSixteenByNineDimensions();
-			if (newDimension != null) {
-				resizeClient(newDimension);
-			}
-		}
 	}
 
 	// Initializes the plugin by modifying necessary widgets and creating custom sprites.
@@ -243,7 +180,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	{
 		widgetsModified = true;
 		resizeRenderViewport();
-		resizeSixteenByNine();
+		resizeByAspectRatio();
 		overlayManager.add(enabledOverlays);
 		if (config.isWideChatbox()){
 			hideChatSprites();
@@ -253,6 +190,59 @@ public class FixedResizableHybridPlugin extends Plugin
 		repositionMinimapWidgets();
 		createFixedSprites();
 	}
+
+	private void resizeByAspectRatio() {
+		if (!config.aspectRatioResize()) {
+			return;
+		}
+
+		Dimension newDimensions = calculateAspectRatioDimensions();
+		if (newDimensions != null) {
+			resizeClient(newDimensions);
+		}
+	}
+
+	private Dimension calculateAspectRatioDimensions() {
+		Widget fullCanvas = client.getWidget(classicResizableGroupId, 34);
+		if (fullCanvas == null || fullCanvas.isHidden()) {
+			return null;
+		}
+
+		fullCanvas.revalidateScroll();
+
+		Dimension stretchedDimensions = client.getStretchedDimensions();
+		int currentWidth = stretchedDimensions.width;
+		int currentHeight = stretchedDimensions.height;
+
+		int aspectWidth = config.aspectRatioWidthResize();
+		int aspectHeight = config.aspectRatioHeightResize();
+
+		if (config.resizeBy() == ResizeBy.WIDTH) {
+			int newHeight = aspectHeight * currentWidth / aspectWidth;
+			return new Dimension(currentWidth, newHeight);
+		} else { // ResizeBy.HEIGHT
+			int newWidth = aspectWidth * currentHeight / aspectHeight;
+			return new Dimension(newWidth, currentHeight);
+		}
+	}
+
+	private void resizeClient(Dimension dimension) {
+		// Validate and adjust the dimensions
+		int processedWidth = Math.max(Math.min(dimension.width, 7680), Constants.GAME_FIXED_WIDTH);
+		int processedHeight = Math.max(Math.min(dimension.height, 2160), Constants.GAME_FIXED_HEIGHT);
+		Dimension processedGameSize = new Dimension(processedWidth, processedHeight);
+
+		Dimension currentSize = configManager.getConfiguration("runelite", "gameSize", Dimension.class);
+		if (processedGameSize.equals(currentSize)) {
+			Dimension processedGameSizePlus1 = new Dimension(processedWidth + 1, processedHeight);
+			configManager.setConfiguration("runelite", "gameSize", processedGameSizePlus1);
+			resizeOnGameTick = true;
+		} else {
+			log.info("Resized to {} x {}", processedWidth, processedHeight);
+			configManager.setConfiguration("runelite", "gameSize", processedGameSize);
+		}
+	}
+
 	private void hideChatSprites(){
 		Widget chatboxBackground = client.getWidget(ComponentID.CHATBOX_TRANSPARENT_BACKGROUND);
 		if (chatboxBackground!=null){
@@ -542,30 +532,6 @@ public class FixedResizableHybridPlugin extends Plugin
 		overlayManager.remove(enabledOverlays);
 	}
 
-	// Resizes the client to the specified dimension. For some reason, the runelite client doesn't update the config
-	//   when the client is resized via dragging edges. To work around this, it's first set 1 pixel wider than the
-	//   dimensions passed, and then resized again after the client's next game tick.
-	//
-	//   Repurposed from the Client Resizer Plugin
-	private void resizeClient(Dimension dimension) {
-		// Validate and adjust the dimensions
-		int processedWidth = Math.max(Math.min(dimension.width, 7680), Constants.GAME_FIXED_WIDTH);
-		int processedHeight = Math.max(Math.min(dimension.height, 2160), Constants.GAME_FIXED_HEIGHT);
-		Dimension processedGameSize = new Dimension(processedWidth, processedHeight);
-		Dimension currentSize = configManager.getConfiguration("runelite", "gameSize", Dimension.class);
-		if (processedGameSize.equals(currentSize)){
-			Dimension processedGameSizePlus1 = new Dimension(processedWidth + 1, processedHeight);
-			//log.info("Resized to {} x {}", processedWidth+1, processedHeight);
-			configManager.setConfiguration("runelite", "gameSize", processedGameSizePlus1);
-			resizeOnGameTick = true;
-		}
-		if (!processedGameSize.equals(currentSize)){
-			log.info("Resized to {} x {}", processedWidth,processedHeight);
-			configManager.setConfiguration("runelite", "gameSize", processedGameSize);
-			resizeOnGameTick = false;
-		}
-
-	}
 	// Sets a widget's coordinates, overloaded to be able to accept both ComponentIDs or the widget directly
 	private void setWidgetCoordinates(int componentId, int newX, int newY) {
 		setWidgetCoordinates(client.getWidget(componentId),newX,newY);
@@ -845,7 +811,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	}
 	//Runs after onPostScript when opening or closing of the chatbox. Handles recentering the viewport. Wide chat mode only.
 	private void chatboxChanged(){
-		if (config.isWideChatbox() && getGameClientLayout() == 2){
+		if (config.chatboxViewportCentering() && config.isWideChatbox() && getGameClientLayout() == 2){
 			Widget mainViewport = client.getWidget(classicResizableGroupId,91);
 			Widget chatboxFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
 			if (mainViewport!=null&&chatboxFrame!=null){
@@ -860,6 +826,51 @@ public class FixedResizableHybridPlugin extends Plugin
 			}
 		}
 	}
+
+
+	private void widenChat(){
+		if (!config.isWideChatbox() || !widgetsModified || getGameClientLayout()!=2){return;}
+		Widget mainViewport = client.getWidget(classicResizableGroupId,91);
+		if (mainViewport==null){return;}
+		int wideChatboxWidth = mainViewport.getWidth();
+
+		Widget chatParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_CHATBOX_PARENT);//161.96
+		if (chatParent!=null) {
+			saveWidgetState(chatParent);
+			chatParent.setOriginalWidth(wideChatboxWidth);
+			chatParent.revalidateScroll();
+		}
+		Widget chatFrame = client.getWidget(ComponentID.CHATBOX_FRAME); //162.34
+		if (chatFrame!=null) {
+			saveWidgetState(chatFrame);
+			chatFrame.setOriginalWidth(wideChatboxWidth);
+			chatFrame.revalidateScroll();
+		}
+		Widget dialogueOptions = client.getWidget(ComponentID.DIALOG_OPTION_OPTIONS);
+		if (dialogueOptions!=null) {
+			saveWidgetState(dialogueOptions);
+			dialogueOptions.setOriginalX(0);
+			dialogueOptions.setXPositionMode(1);
+			dialogueOptions.getParent().revalidateScroll();
+		}
+		Widget reportAbuseDialogue = client.getWidget(ComponentID.REPORT_ABUSE_PARENT);
+		if (reportAbuseDialogue!=null){
+			Widget reportAbuseDialogueSprite = client.getWidget(875,1);
+			if (reportAbuseDialogueSprite!=null){
+				saveWidgetState(reportAbuseDialogueSprite);
+				saveWidgetState(reportAbuseDialogue);
+				reportAbuseDialogueSprite.setHidden(true);
+			}
+		}
+		//Center chat buttons on viewport
+		Widget chatButtons = client.getWidget(ComponentID.CHATBOX_BUTTONS); //162.1
+		if (chatButtons!=null) {
+			saveWidgetState(chatButtons);
+			chatButtons.setXPositionMode(1);
+			chatButtons.revalidateScroll();
+		}
+	}
+
 	private boolean isChatboxOpen(){
 		Widget chatboxFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
 		if (chatboxFrame != null){
