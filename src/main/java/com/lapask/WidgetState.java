@@ -52,7 +52,7 @@ public class WidgetState {
     public int getHeightMode() { return heightMode; }
     public int getOriginalHeight() { return originalHeight; }
     public boolean isHidden() { return hidden; }
-    public boolean isSelfHiddenHidden() { return hidden; }
+    public boolean isSelfHidden() { return selfHidden; }
     public boolean isResetLast() { return resetLast; }
 
     @Override

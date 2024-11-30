@@ -20,12 +20,22 @@ public interface FixedResizableHybridConfig extends Config
 	@ConfigItem(
 			keyName = "fillGapBorders",
 			name = "Gap Borders",
-			description = "For atypical aspect ratios or users who don't use stretched mode, this adds borders to the gap between the inventory and minimap",
+			description = "For atypical aspect ratios or users who don't use stretched mode, this adds borders to the gap between the inventory and minimap.",
 			position = 2
 	)
 	default boolean fillGapBorders()
 	{
 		return true;
+	}
+	@ConfigItem(
+			keyName = "isWideChatbox",
+			name = "Wide Chatbox + Viewport Centering",
+			description = "Widens the chatbox to fit the entire width of the viewport. Also recenters the viewport depending on whether the chat is open or closed.",
+			position = 2
+	)
+	default boolean isWideChatbox()
+	{
+		return false;
 	}
 
 }

@@ -5,7 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.GameState;
-import net.runelite.api.Varbits;
 import net.runelite.api.events.*;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.InterfaceID;
@@ -51,7 +50,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	private OverlayManager overlayManager;
 
 	@Inject
-	private FixedResizableHybridGapOverlay gapOverlay;
+	private FixedResizableHybridOverlay enabledOverlays;
 
 	private boolean resizeOnGameTick = false;
 	boolean widgetsModified = false;
@@ -90,9 +89,10 @@ public class FixedResizableHybridPlugin extends Plugin
 			return;
 		}
 		//Resize client if config option is enabled
-		if (event.getKey().equals("useSixteenByNine") && config.useSixteenByNine()){
+		String eventKey = event.getKey();
+		if (eventKey.equals("useSixteenByNine") && config.useSixteenByNine()){
 			clientThread.invoke(this::resizeSixteenByNine);
-		} else if (event.getKey().equals("fillGapBorders")){
+		} else if (eventKey.equals("fillGapBorders") || eventKey.equals("isWideChatbox")){
 			resetWidgets();
 			queuePluginInitialization();
 		}
@@ -101,22 +101,88 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	@Subscribe
 	public void onScriptPostFired(ScriptPostFired event) {
+
 		int scriptId = event.getScriptId();
-		// Fires when interface boxes are recalculated (e.g. bank inventory, settings panel, etc)
-		if (scriptId == 909) {
-			fixNestedInterfaceDimensions();
+		switch (scriptId) {
+			case 909: // Interface boxes recalculated (e.g., bank inventory, settings panel, etc)
+				fixNestedInterfaceDimensions();
+				break;
+			case 904: // Window resized
+				if (widgetsModified && config.isWideChatbox() && getGameClientLayout() == 2){
+					widenChat();
+				}
+				break;
+			case 1699: // Right-aligned minimap orbs repositioned
+			case 3305:
+				fixWorldMapWikiStoreActAdvOrbs();
+				break;
+
+			case 902: // Inventory background changed, revert it back to its old sprite
+				fixInvBackground();
+				break;
+
+			case 901: // Game Interface Mode changes
+				gameClientLayoutChanged();
+				break;
+
+			case 175: // Chatbox opens/closes
+			case 113:
+				if (config.isWideChatbox()) {
+					chatboxChanged();
+					widenChat();
+				}
+				break;
+
+			case 5933: // Leagues widget fix
+				if (config.isWideChatbox()) {
+					leaguesWidgetFix();
+				}
+				break;
+			default:
+				break;
 		}
-		// Fires when right aligned minimap orbs are repositioned
-		if (scriptId == 1699 || scriptId == 3305) {
-			fixWorldMapWikiStoreActAdvOrbs();
+
+	}
+	private void widenChat(){
+		if (!config.isWideChatbox() || !widgetsModified || getGameClientLayout()!=2){return;}
+		Widget mainViewport = client.getWidget(classicResizableGroupId,91);
+		if (mainViewport==null){return;}
+		int wideChatboxWidth = mainViewport.getWidth();
+
+		Widget chatParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_CHATBOX_PARENT);//161.96
+		if (chatParent!=null) {
+			saveWidgetState(chatParent);
+			chatParent.setOriginalWidth(wideChatboxWidth);
+			chatParent.revalidateScroll();
 		}
-		// Fires when the inventory background is changed, reverting it back to its old sprite
-		if (scriptId == 902) {
-			fixInvBackground();
+		Widget chatFrame = client.getWidget(ComponentID.CHATBOX_FRAME); //162.34
+		if (chatFrame!=null) {
+			saveWidgetState(chatFrame);
+			chatFrame.setOriginalWidth(wideChatboxWidth);
+			chatFrame.revalidateScroll();
 		}
-		// Fires when Game Interface Mode changes
-		if (scriptId == 901){
-			gameClientLayoutChanged();
+		Widget dialogueOptions = client.getWidget(ComponentID.DIALOG_OPTION_OPTIONS);
+		if (dialogueOptions!=null) {
+			saveWidgetState(dialogueOptions);
+			dialogueOptions.setOriginalX(0);
+			dialogueOptions.setXPositionMode(1);
+			dialogueOptions.getParent().revalidateScroll();
+		}
+		Widget reportAbuseDialogue = client.getWidget(ComponentID.REPORT_ABUSE_PARENT);
+		if (reportAbuseDialogue!=null){
+			Widget reportAbuseDialogueSprite = client.getWidget(875,1);
+			if (reportAbuseDialogueSprite!=null){
+				saveWidgetState(reportAbuseDialogueSprite);
+				saveWidgetState(reportAbuseDialogue);
+				reportAbuseDialogueSprite.setHidden(true);
+			}
+		}
+		//Center chat buttons on viewport
+		Widget chatButtons = client.getWidget(ComponentID.CHATBOX_BUTTONS); //162.1
+		if (chatButtons!=null) {
+			saveWidgetState(chatButtons);
+			chatButtons.setXPositionMode(1);
+			chatButtons.revalidateScroll();
 		}
 	}
 
@@ -176,14 +242,37 @@ public class FixedResizableHybridPlugin extends Plugin
 	private void initializePlugin()
 	{
 		widgetsModified = true;
-		repositionMinimapWidgets();
-		createFixedSprites();
 		resizeRenderViewport();
 		resizeSixteenByNine();
-		overlayManager.add(gapOverlay);
+		overlayManager.add(enabledOverlays);
+		if (config.isWideChatbox()){
+			hideChatSprites();
+			widenChat();
+		}
 		fixNestedInterfaceDimensions();
+		repositionMinimapWidgets();
+		createFixedSprites();
 	}
-
+	private void hideChatSprites(){
+		Widget chatboxBackground = client.getWidget(ComponentID.CHATBOX_TRANSPARENT_BACKGROUND);
+		if (chatboxBackground!=null){
+			chatboxBackground.setHidden(true);
+		}
+		Widget chatboxButtonsSprite = client.getWidget(InterfaceID.CHATBOX,3);
+		if (chatboxButtonsSprite != null){
+			chatboxButtonsSprite.setHidden(true);
+		}
+	}
+	private void resetChatSprites(){
+		Widget chatboxBackground = client.getWidget(ComponentID.CHATBOX_TRANSPARENT_BACKGROUND);
+		if (chatboxBackground!=null){
+			chatboxBackground.setHidden(false);
+		}
+		Widget chatboxButtonsSprite = client.getWidget(InterfaceID.CHATBOX,3);
+		if (chatboxButtonsSprite != null){
+			chatboxButtonsSprite.setHidden(false);
+		}
+	}
 	// Saves the widget state under these conditions:
 	// 1. The widget exists
 	// 2. The widget has not already been saved
@@ -301,11 +390,11 @@ public class FixedResizableHybridPlugin extends Plugin
 	// banks, deposit boxes, settings, etc). This function sets those back to their modified states.
 	private void fixNestedInterfaceDimensions() {
 		if (!widgetsModified) return;
-
 		Widget clickWindow = client.getWidget(classicResizableGroupId, 92);
 		if (clickWindow != null) {
 			clickWindow.setXPositionMode(0);
-			clickWindow.revalidate();
+			clickWindow.setYPositionMode(0);
+			clickWindow.revalidateScroll();
 			for (Widget child : clickWindow.getStaticChildren()) {
 				if (child.getOriginalWidth() == 250) {
 					child.setOriginalWidth(0);
@@ -317,19 +406,26 @@ public class FixedResizableHybridPlugin extends Plugin
 		Widget oldSchoolBox = client.getWidget(oldSchoolBoxId);
 		if (oldSchoolBox != null) {
 			Widget parent = oldSchoolBox.getParent();
-			if (parent != null && parent.getXPositionMode() == 1) {
+			if (parent != null && (parent.getXPositionMode() == 1 || parent.getYPositionMode()==1)) {
 				parent.setXPositionMode(0);
-				parent.revalidate();
+				parent.setYPositionMode(0);
+				parent.revalidateScroll();
 			}
 			if (oldSchoolBox.getOriginalWidth() == 250) {
 				oldSchoolBox.setOriginalWidth(0);
-				oldSchoolBox.revalidate();
+				oldSchoolBox.revalidateScroll();
+			}
+			if (config.isWideChatbox() && oldSchoolBox.getOriginalHeight() == 165 && isChatboxOpen()){ //
+				oldSchoolBox.setOriginalHeight(0);
+				oldSchoolBox.revalidateScroll();
 			}
 			for (Widget child : oldSchoolBox.getStaticChildren()) {
 				child.revalidateScroll();
 			}
+			leaguesWidgetFix();
 		}
 	}
+
 	// Runs from onScriptPostFired() for the script which fires and resets the inventory background sprite
 	private void fixInvBackground() {
 		if (widgetsModified && getGameClientLayout() == 2) {
@@ -349,6 +445,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			removeAddedWidgets();
 			resetRenderViewport();
 			resetOriginalStates(); // sets widgetModified to false too
+			resetChatSprites();
 		});
 	}
 	private void resetOriginalStates(){
@@ -377,7 +474,7 @@ public class FixedResizableHybridPlugin extends Plugin
 				widget.setYPositionMode(state.getYPositionMode());
 				widget.setWidthMode(state.getWidthMode());
 				widget.setHeightMode(state.getHeightMode());
-				widget.setHidden(state.isHidden());
+				widget.setHidden(state.isHidden() || state.isSelfHidden());
 			}
 		}
 
@@ -442,8 +539,7 @@ public class FixedResizableHybridPlugin extends Plugin
 		if (invDynamicParent!=null){
 			invDynamicParent.deleteAllChildren();
 		}
-
-		overlayManager.remove(gapOverlay);
+		overlayManager.remove(enabledOverlays);
 	}
 
 	// Resizes the client to the specified dimension. For some reason, the runelite client doesn't update the config
@@ -527,11 +623,11 @@ public class FixedResizableHybridPlugin extends Plugin
 
 			minimapWidget.setOriginalWidth(249);
 			minimapWidget.setOriginalHeight(207);
-			minimapWidget.revalidate();
+			minimapWidget.revalidateScroll();
 
 			minimapWidgetOrbsParent.setOriginalWidth(249);
 			minimapWidgetOrbsParent.setOriginalHeight(197);
-			minimapWidgetOrbsParent.revalidate();
+			minimapWidgetOrbsParent.revalidateScroll();
 
 			minimapWidgetOrbsInterface.setOriginalWidth(249);
 			minimapWidgetOrbsInterface.setOriginalHeight(197);
@@ -563,7 +659,7 @@ public class FixedResizableHybridPlugin extends Plugin
 
 					// Set the absolute coordinates using setWidgetCoordinates
 					setWidgetCoordinates(wdgToAdj, newX, newY);
-					wdgToAdj.revalidate();
+					wdgToAdj.revalidateScroll();
 				}
 			}
 
@@ -583,6 +679,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			setWidgetCoordinates(client.getWidget(classicResizableGroupId, 29), 28, 3);
 			//world map orb, wiki banner, store orb, and activity adviser orb all handled under this function
 			fixWorldMapWikiStoreActAdvOrbs();
+			minimapWidget.revalidateScroll();
 		}
 	}
 
@@ -722,10 +819,13 @@ public class FixedResizableHybridPlugin extends Plugin
 	private void resizeRenderViewport(){
 		Widget mainViewport = client.getWidget(classicResizableGroupId,91);
 		if (mainViewport != null){
-			saveWidgetState(mainViewport);
 			// Width is set to the width of the inventory and minimap widgets because widthMode = 1 (subtracts
 			//     that value from the parent widget's dimensions).
 			mainViewport.setOriginalWidth(249);
+			if (config.isWideChatbox()){
+				chatboxChanged();
+			}
+			// Configures height of viewport if wide chatbox is enabled
 			mainViewport.revalidateScroll();
 		}
 	}
@@ -737,8 +837,44 @@ public class FixedResizableHybridPlugin extends Plugin
 		if (mainViewport != null){
 			clientThread.invoke(()-> {
 				mainViewport.setOriginalWidth(0);
+				mainViewport.setOriginalHeight(0);
+				mainViewport.setYPositionMode(1);
 				mainViewport.revalidateScroll();
 			});
+		}
+	}
+	//Runs after onPostScript when opening or closing of the chatbox. Handles recentering the viewport. Wide chat mode only.
+	private void chatboxChanged(){
+		if (config.isWideChatbox() && getGameClientLayout() == 2){
+			Widget mainViewport = client.getWidget(classicResizableGroupId,91);
+			Widget chatboxFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
+			if (mainViewport!=null&&chatboxFrame!=null){
+				if (!chatboxFrame.isHidden()){
+					mainViewport.setOriginalHeight(165);
+					mainViewport.setYPositionMode(0);
+				} else {
+					mainViewport.setOriginalHeight(0);
+					mainViewport.setYPositionMode(1);
+				}
+				mainViewport.revalidateScroll();
+			}
+		}
+	}
+	private boolean isChatboxOpen(){
+		Widget chatboxFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
+		if (chatboxFrame != null){
+			return !chatboxFrame.isHidden();
+		}
+		return false;
+	}
+
+	//Fix for jagex widgets moving around viewport in leagues. Really difficult to manipulate this widget for some reason.
+	private void leaguesWidgetFix(){
+		Widget leaguesWidget = client.getWidget(651,0);
+		if (leaguesWidget!=null){
+			saveWidgetState(leaguesWidget);
+			leaguesWidget.setYPositionMode(2);
+			leaguesWidget.revalidate();
 		}
 	}
 }
