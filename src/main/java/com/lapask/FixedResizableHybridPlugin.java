@@ -60,6 +60,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	private final HashMap<Integer, WidgetState> originalStates = new HashMap<>();
 	private static final int classicResizableGroupId = InterfaceID.RESIZABLE_VIEWPORT;
 	private static final int oldSchoolBoxId = ComponentID.RESIZABLE_VIEWPORT_RESIZABLE_VIEWPORT_OLD_SCHOOL_BOX;
+	private boolean fairyWidgetLoaded = false;
 
 	@Provides
 	FixedResizableHybridConfig provideConfig(ConfigManager configManager)
@@ -103,6 +104,7 @@ public class FixedResizableHybridPlugin extends Plugin
 		{
 			return;
 		}
+		//log.debug("Config changed");
 		//Resize client if config option is enabled
 		String eventKey = event.getKey();
 		if (eventKey.equals("aspectRatioResize") && config.aspectRatioResize())
@@ -127,22 +129,27 @@ public class FixedResizableHybridPlugin extends Plugin
 		switch (scriptId)
 		{
 			case 909: // Interface boxes recalculated (e.g., bank inventory, settings panel, etc)
+				//log.debug("script 909: fixInterfaceDimensions()");
 				fixInterfaceDimensions();
 				break;
 			case 904: // Window resized
 				if (widgetsModified && config.isWideChatbox() && getGameClientLayout() == 2)
 				{
+					//log.debug("script 904: widenChat() for window resize");
 					widenChat();
 				}
 				break;
 			case 1699: // Right-aligned minimap orbs repositioned
 			case 3305:
+				//log.debug("script 1699/3305: fixWorldMapWikiStoreActAdvOrbs()");
 				fixWorldMapWikiStoreActAdvOrbs();
 				break;
 			case 902: // Inventory background changed, revert it back to its old sprite
+				//log.debug("script 902: fixInvBackground()");
 				fixInvBackground();
 				break;
 			case 901: // Game Interface Mode changes
+				//log.debug("script 901: gameClientLayoutChanged()");
 				gameClientLayoutChanged();
 				break;
 			case 175:
@@ -153,8 +160,13 @@ public class FixedResizableHybridPlugin extends Plugin
 				// Chatbox opens/closes
 				if (config.isWideChatbox())
 				{
+					//log.debug("script 175/113/{}/{}/664: chatboxChanged() and widenChat()",ScriptID.MESSAGE_LAYER_OPEN,ScriptID.MESSAGE_LAYER_CLOSE);
 					chatboxChanged();
 					widenChat();
+					if (fairyWidgetLoaded)
+					{
+						fixFairyBackground();
+					}
 				}
 				break;
 			default:
@@ -167,8 +179,30 @@ public class FixedResizableHybridPlugin extends Plugin
 	{
 		if (resizeOnGameTick)
 		{
+			//log.debug("onGameTick(): triggered for resize (AR)");
 			resizeByAspectRatio();
 			resizeOnGameTick = false;
+		}
+	}
+
+	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded event)
+	{
+		if (event.getGroupId() == InterfaceID.FAIRY_RING)
+		{
+			//log.debug("onWidgetLoaded(): fairy ring loaded");
+			fairyWidgetLoaded = true;
+			clientThread.invokeLater(this::fixFairyBackground);
+		}
+	}
+
+	@Subscribe
+	public void onWidgetClosed(WidgetClosed event)
+	{
+		if (event.getGroupId() == InterfaceID.FAIRY_RING && event.isUnload())
+		{
+			//log.debug("onWidgetClosed(): fairy ring closed");
+			fairyWidgetLoaded = false;
 		}
 	}
 
@@ -176,6 +210,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// For some reason you can't use invoke() here or else it will delete the minimap orbs when you change interface mode.
 	private void queuePluginInitialization()
 	{
+		//log.debug("queuePluginInitialization()");
 		//invokeLater will keep running until it returns true
 		clientThread.invokeLater(() ->
 		{
@@ -198,6 +233,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Also resizes 16:9 if config option is true.
 	private void initializePlugin()
 	{
+		//log.debug("initializePlugin()");
 		widgetsModified = true;
 		resizeRenderViewport();
 		resizeByAspectRatio();
@@ -214,6 +250,7 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	private void resizeByAspectRatio()
 	{
+		//log.debug("resizeByAspectRatio()");
 		if (!config.aspectRatioResize())
 		{
 			return;
@@ -228,6 +265,7 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	private Dimension calculateAspectRatioDimensions()
 	{
+		//log.debug("calculateAspectRatioDimensions()");
 		Widget fullCanvas = client.getWidget(classicResizableGroupId, 34);
 		if (fullCanvas == null || fullCanvas.isHidden())
 		{
@@ -257,6 +295,7 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	private void resizeClient(Dimension dimension)
 	{
+		//log.debug("resizeClient(Dimension dimension)");
 		// Validate and adjust the dimensions
 		int processedWidth = Math.max(Math.min(dimension.width, 7680), Constants.GAME_FIXED_WIDTH);
 		int processedHeight = Math.max(Math.min(dimension.height, 2160), Constants.GAME_FIXED_HEIGHT);
@@ -277,6 +316,7 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	private void hideChatSprites()
 	{
+		//log.debug("hideChatSprites()");
 		Widget chatboxBackground = client.getWidget(ComponentID.CHATBOX_TRANSPARENT_BACKGROUND);
 		if (chatboxBackground != null)
 		{
@@ -291,6 +331,7 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	private void resetChatSprites()
 	{
+		//log.debug("resetChatSprites()");
 		Widget chatboxBackground = client.getWidget(ComponentID.CHATBOX_TRANSPARENT_BACKGROUND);
 		if (chatboxBackground != null)
 		{
@@ -350,6 +391,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// -1 if the layout cannot be determined.
 	private int getGameClientLayout()
 	{
+		//log.debug("getGameClientLayout()");
 		if (client.getGameState() == GameState.LOGGED_IN)
 		{
 			Widget classicResizableWidget = client.getWidget(InterfaceID.RESIZABLE_VIEWPORT, 0);
@@ -385,11 +427,12 @@ public class FixedResizableHybridPlugin extends Plugin
 	// interference caused by switching layouts.
 	private void gameClientLayoutChanged()
 	{
+		//log.debug("gameClientLayoutChanged()");
 		if (getGameClientLayout() == 2)
 		{
 			queuePluginInitialization();
 		}
-		else
+		else if (widgetsModified)
 		{
 			resetWidgets();
 		}
@@ -408,6 +451,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// - Sets or resets their positions to match the fixed mode layout.
 	private void fixWorldMapWikiStoreActAdvOrbs()
 	{
+		//log.debug("fixWorldMapWikiStoreActAdvOrbs()");
 		if (getGameClientLayout() == 2)
 		{
 			Widget worldMapOrb = client.getWidget(ComponentID.MINIMAP_WORLDMAP_ORB);
@@ -438,7 +482,7 @@ public class FixedResizableHybridPlugin extends Plugin
 		}
 	}
 
-	// Used in volcanic mine overlay fix
+	// Used in volcanic mine overlay fix. There are likely other widgets this fixes too (minigame overlays)
 	private void fixIngameOverlayWidgets()
 	{
 		int maxDepth = 3;
@@ -458,11 +502,10 @@ public class FixedResizableHybridPlugin extends Plugin
 		}
 	}
 
-	// Runs from onScriptPostFired() for the scriptId == 909 which resets the bounding boxes of game interfaces (e.g.
-	// banks, deposit boxes, settings, etc). This function sets those back to their modified states. Also fixes the background
-	// for the fairy ring interface
+	// Resets the bounding boxes of game interfaces (e.g. banks, deposit boxes, settings, etc).
 	private void fixInterfaceDimensions()
 	{
+		//log.debug("fixInterfaceDimensions()");
 		Widget renderViewport = client.getWidget(classicResizableGroupId, 91);
 
 		fixIngameOverlayWidgets();
@@ -470,26 +513,37 @@ public class FixedResizableHybridPlugin extends Plugin
 		Widget oldSchoolBox = client.getWidget(oldSchoolBoxId);
 		if (oldSchoolBox != null && renderViewport != null)
 		{
-			Widget parent = oldSchoolBox.getParent();
-			int parentHeight = parent.getOriginalHeight();
+			Widget osbParent = oldSchoolBox.getParent();
+			int parentHeight = osbParent.getOriginalHeight();
 			int renderViewportHeight = renderViewport.getHeight();
-			boolean chatIsOpen = isChatboxOpen();
-			if (parent.getXPositionMode() == 1 || parent.getYPositionMode() == 1)
+			if (osbParent.getXPositionMode() == 1 || osbParent.getYPositionMode() == 1)
 			{
-				parent.setXPositionMode(0);
-				parent.setYPositionMode(0);
-				parent.setOriginalWidth(renderViewport.getWidth());
-				parent.revalidateScroll();
+				osbParent.setXPositionMode(0);
+				osbParent.setYPositionMode(0);
+				osbParent.setOriginalWidth(renderViewport.getWidth());
+				osbParent.revalidateScroll();
 			}
 			if (!config.isWideChatbox() && parentHeight != renderViewportHeight)
 			{
-				parent.setOriginalHeight(renderViewportHeight);
-				parent.revalidateScroll();
+				osbParent.setOriginalHeight(renderViewportHeight);
+				osbParent.revalidateScroll();
 			}
-			else if (config.isWideChatbox() && parentHeight != renderViewportHeight + 23)
+			else if (config.isWideChatbox())
 			{
-				parent.setOriginalHeight(renderViewportHeight + 23);
-				parent.revalidateScroll();
+				if (isChatboxOpen() && config.chatboxViewportCentering())
+				{
+					osbParent.setOriginalHeight(renderViewportHeight);
+					osbParent.revalidateScroll();
+					oldSchoolBox.setOriginalHeight(0);
+					oldSchoolBox.revalidateScroll();
+				}
+				else
+				{
+					osbParent.setOriginalHeight(renderViewportHeight + 23);
+					osbParent.revalidateScroll();
+					oldSchoolBox.setOriginalHeight(165);
+					oldSchoolBox.revalidateScroll();
+				}
 			}
 
 			if (oldSchoolBox.getOriginalWidth() == 250)
@@ -497,26 +551,21 @@ public class FixedResizableHybridPlugin extends Plugin
 				oldSchoolBox.setOriginalWidth(0);
 				oldSchoolBox.revalidateScroll();
 			}
-			if (config.isWideChatbox() && chatIsOpen)
-			{
-				oldSchoolBox.setOriginalHeight(23);
-				oldSchoolBox.revalidateScroll();
-			}
 			for (Widget child : oldSchoolBox.getStaticChildren())
 			{
 				child.revalidateScroll();
 			}
-			fixFairyBackground();
 		}
 	}
 
 	private void fixFairyBackground()
 	{
-		Widget fairyBackground = client.getWidget(161, 14);
-		Widget fairyWidget = client.getWidget(161, 16);
+		//log.debug("fixFairyBackground()");
+		Widget fairyBackground = client.getWidget(classicResizableGroupId, 14);
+		Widget fairyWidget = client.getWidget(classicResizableGroupId, 16);
 		Widget mainViewport = client.getWidget(classicResizableGroupId, 91);
 		Widget oldSchoolBox = client.getWidget(oldSchoolBoxId);
-		if (fairyBackground != null && fairyWidget != null && mainViewport != null)
+		if (fairyBackground != null && fairyWidget != null && mainViewport != null && oldSchoolBox != null)
 		{
 			Widget[] fairyBackgroundWidgets = fairyBackground.getDynamicChildren();
 			if (fairyBackgroundWidgets.length == 4)
@@ -525,40 +574,48 @@ public class FixedResizableHybridPlugin extends Plugin
 				Widget bottomFairyBackground = fairyBackgroundWidgets[1];
 				Widget leftFairyBackground = fairyBackgroundWidgets[2];
 				Widget rightFairyBackground = fairyBackgroundWidgets[3];
+
 				boolean chatIsOpen = isChatboxOpen();
-				int lateralWidth = fairyWidget.getRelativeX();
 				int topHeight;
-				if (chatIsOpen && config.isWideChatbox() && !config.chatboxViewportCentering() && oldSchoolBox != null)
+				int bottomHeight;
+				int leftWidth = fairyWidget.getRelativeX();
+				int rightWidth = oldSchoolBox.getWidth() - fairyWidget.getWidth() - leftWidth;
+
+				leftFairyBackground.setOriginalWidth(leftWidth);
+				rightFairyBackground.setOriginalWidth(rightWidth);
+
+				if (config.isWideChatbox())
 				{
-					topHeight = (oldSchoolBox.getHeight() - fairyWidget.getHeight() - 165 + 23) / 2;
+					topHeight = fairyWidget.getRelativeY();
+
+
+					if (chatIsOpen)
+					{
+
+						bottomHeight = oldSchoolBox.getHeight() - fairyWidget.getHeight() - topHeight;
+						bottomFairyBackground.setOriginalY(oldSchoolBox.getParent().getHeight() - oldSchoolBox.getHeight());
+
+					}
+					else
+					{ //chat closed (doesn't change regardless of if viewport centering is enabled)
+						bottomHeight = (oldSchoolBox.getParent().getHeight() - 23) - fairyWidget.getHeight() - topHeight;
+						bottomFairyBackground.setOriginalY(23);
+					}
+					bottomFairyBackground.setOriginalHeight(bottomHeight);
+
 				}
 				else
 				{
 					topHeight = fairyWidget.getRelativeY();
+					bottomHeight = mainViewport.getHeight() - topHeight - fairyWidget.getHeight();
+					bottomFairyBackground.setOriginalHeight(bottomHeight);
+					//log.debug("d");
 				}
 
-				leftFairyBackground.setOriginalWidth(lateralWidth);
 				leftFairyBackground.setOriginalY(topHeight);
-
-				rightFairyBackground.setOriginalWidth(lateralWidth);
 				rightFairyBackground.setOriginalY(topHeight);
-
 				topFairyBackground.setOriginalHeight(topHeight);
 
-				if (config.isWideChatbox())
-				{
-					int bottomHeight = topHeight + 1;
-					bottomFairyBackground.setOriginalHeight(bottomHeight);
-					if (!config.chatboxViewportCentering())
-					{
-						bottomFairyBackground.setOriginalY(165);
-					}
-				}
-				else
-				{
-					int bottomHeight = mainViewport.getHeight() - topHeight - fairyWidget.getHeight();
-					bottomFairyBackground.setOriginalHeight(bottomHeight);
-				}
 				fairyBackground.revalidateScroll();
 			}
 		}
@@ -600,8 +657,9 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Runs from onScriptPostFired() for the script which fires and resets the inventory background sprite
 	private void fixInvBackground()
 	{
-		if (widgetsModified && getGameClientLayout() == 2)
+		if (widgetsModified)
 		{
+			//log.debug("fixInvBackground()");
 			Widget invBackground = client.getWidget(classicResizableGroupId, 38);
 			if (invBackground != null && invBackground.getSpriteId() == 897)
 			{
@@ -616,6 +674,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// There are a few widgets which need to be revalidated last to make sure everything resets properly, which is done last.
 	private void resetWidgets()
 	{
+		//log.debug("resetWidgets()");
 		clientThread.invoke(() -> {
 			removeAddedWidgets();
 			resetRenderViewport();
@@ -626,6 +685,7 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	private void resetOriginalStates()
 	{
+		//log.debug("resetOriginalStates()");
 		List<Map.Entry<Integer, WidgetState>> resetLastEntries = new ArrayList<>();
 
 		// Iterate through the originalStates map
@@ -716,6 +776,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Removes all widgets that plugin created (sprites surrounding the minimap/inventory)
 	public void removeAddedWidgets()
 	{
+		//log.debug("removeAddedWidgets() (inv+minimap)");
 		//Deletes added minimap sprites + bottom border sprite
 		Widget minimapDrawArea = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP_DRAW_AREA);
 		if (minimapDrawArea != null && minimapDrawArea.getParent() != null)
@@ -779,6 +840,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	//     resetWidgets() later. Could definitely be cleaned up.
 	private void repositionMinimapWidgets()
 	{
+		//log.debug("repositionMinimapWidgets()");
 		Widget minimapWidget = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP);
 		Widget minimapSprite = client.getWidget(classicResizableGroupId, 32);
 		Widget minimapWidgetOrbsParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP_ORB_HOLDER);
@@ -863,6 +925,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Creates new widgets (defined by newSpriteConfigs) that weren't originally loaded in classic-resizable
 	private void createFixedSprites()
 	{
+		//log.debug("createFixedSprites()");
 		// Get the parent widget the sprites should be under
 		Widget minimapDrawArea = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_MINIMAP_DRAW_AREA);
 		Widget inventoryParentWidget = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_INVENTORY_PARENT);
@@ -927,6 +990,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// and prior to modifying the existing inventory sprites.
 	private void inventoryWidgetBoundsFix()
 	{
+		//log.debug("inventoryWidgetBoundsFix()");
 		Widget invParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_INVENTORY_PARENT);
 		if (invParent != null)
 		{
@@ -1013,6 +1077,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// This also consequently centers the camera properly, one of my main annoyances with the original resizable mode
 	private void resizeRenderViewport()
 	{
+		//log.debug("resizeRenderViewport()");
 		Widget mainViewport = client.getWidget(classicResizableGroupId, 91);
 		if (mainViewport != null)
 		{
@@ -1032,6 +1097,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Called during the resetWidgets() function.
 	private void resetRenderViewport()
 	{
+		//log.debug("resetRenderViewport()");
 		Widget mainViewport = client.getWidget(classicResizableGroupId, 91);
 		if (mainViewport != null)
 		{
@@ -1044,11 +1110,12 @@ public class FixedResizableHybridPlugin extends Plugin
 		}
 	}
 
-	//Runs after onPostScript when opening or closing of the chatbox. Handles recentering the viewport. Wide chat mode only.
+	//Runs after onPostScript when opening or closing of the chatbox. Handles recentering the viewport for Wide chat mode only.
 	private void chatboxChanged()
 	{
 		if (config.isWideChatbox() && getGameClientLayout() == 2)
 		{
+			//log.debug("chatboxChanged()");
 			Widget mainViewport = client.getWidget(classicResizableGroupId, 91);
 			Widget chatboxFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
 			Widget oldSchoolBox = client.getWidget(oldSchoolBoxId);
@@ -1061,10 +1128,10 @@ public class FixedResizableHybridPlugin extends Plugin
 					mainViewport.setOriginalHeight(165);
 					mainViewport.setYPositionMode(0);
 					mainViewport.revalidateScroll();
-					osbParent.setOriginalHeight(mainViewport.getHeight());
-					osbParent.revalidateScroll();
-					oldSchoolBox.setOriginalHeight(0);
-					oldSchoolBox.revalidateScroll();
+//					osbParent.setOriginalHeight(mainViewport.getHeight());
+//					osbParent.revalidateScroll();
+//					oldSchoolBox.setOriginalHeight(0);
+//					oldSchoolBox.revalidateScroll();
 				}
 				else
 				{
@@ -1072,18 +1139,20 @@ public class FixedResizableHybridPlugin extends Plugin
 					mainViewport.setOriginalHeight(23);
 					mainViewport.setYPositionMode(0);
 					mainViewport.revalidateScroll();
-					osbParent.setOriginalHeight(mainViewport.getHeight() + 23);
-					osbParent.revalidateScroll();
-					oldSchoolBox.setOriginalHeight(165);
-					oldSchoolBox.revalidateScroll();
+//					osbParent.setOriginalHeight(mainViewport.getHeight() + 23);
+//					osbParent.revalidateScroll();
+//					oldSchoolBox.setOriginalHeight(165);
+//					oldSchoolBox.revalidateScroll();
 				}
 			}
+			fixInterfaceDimensions();
 		}
 	}
 
 
 	private void widenChat()
 	{
+		//log.debug("widenChat()");
 		if (!config.isWideChatbox() || !widgetsModified || getGameClientLayout() != 2)
 		{
 			return;
@@ -1142,11 +1211,14 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	private boolean isChatboxOpen()
 	{
+
 		Widget chatboxFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
 		if (chatboxFrame != null)
 		{
+			//log.debug("isChatboxOpen: {}",!chatboxFrame.isHidden());
 			return !chatboxFrame.isHidden();
 		}
+		//log.debug("isChatboxOpen: {} bc frame null",false);
 		return false;
 	}
 }

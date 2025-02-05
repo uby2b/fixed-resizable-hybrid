@@ -20,16 +20,17 @@
     - You can set the height manually in the RuneLite settings.
 ### Features
 - **Fixed Mode Aesthetic**:
-    - Aligns the UI elements (e.g., minimap, inventory, orbs) to mimic the layout of Fixed Mode.
-    - Replaces backgrounds and sprites to match the classic Fixed Mode design.
+  - Aligns the UI elements (e.g., minimap, inventory, orbs) to mimic the layout of Fixed Mode.
+  - Replaces backgrounds and sprites to match the classic Fixed Mode design.
 
 - **Automatic 16:9 Aspect Ratio Resizing**:
-    - Optionally resizes the client to a 16:9 resolution for widescreen monitors.
-    - Automatically calculates dimensions based on the client height.
+  - Optionally resizes the client to a 16:9 resolution for widescreen monitors.
+  - Automatically calculates dimensions based on the client height.
 ---
 ## Future Plans
-- Adding more customizable config settings.
-  - For example, adding config options for user-specified aspect ratio resizing.
+- Increase compatibility with resource packs / interface styles
+- Improve functionality within cutscenes
+
 ---
 ## Known Compatability Issues
 It's highly unlikely that any plugins which reskin the game's interface will work. (E.g. Interface Styles or Resource Packs Plugin).
