@@ -432,7 +432,7 @@ public class FixedResizableHybridPlugin extends Plugin
 		{
 			queuePluginInitialization();
 		}
-		else if (widgetsModified)
+		else if (widgetsModified || client.getGameState() == GameState.CONNECTION_LOST)
 		{
 			resetWidgets();
 		}
