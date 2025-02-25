@@ -1,10 +1,12 @@
 package com.lapask;
 
 import com.lapask.config.ResizeBy;
+import java.awt.event.KeyEvent;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Keybind;
 
 @ConfigGroup("fixedresizablehybrid")
 public interface FixedResizableHybridConfig extends Config
@@ -118,5 +120,16 @@ public interface FixedResizableHybridConfig extends Config
 	{
 		return true;
 	}
-
+	@ConfigItem(
+		keyName = "centerChatboxButtons",
+		name = "Center Chatbox Buttons",
+		description = "Requires \"Wide Chatbox\" to be enabled.<br>"
+			+ "Allows you to select between centering the chatbox buttons or stretching them out.<br>",
+		position = 3,
+		section = wideChatboxSettings
+	)
+	default boolean centerChatboxButtons()
+	{
+		return false;
+	}
 }

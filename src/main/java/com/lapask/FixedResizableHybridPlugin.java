@@ -3,15 +3,27 @@ package com.lapask;
 import com.google.inject.Inject;
 import com.google.inject.Provides;
 import com.lapask.config.ResizeBy;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.GameState;
 import net.runelite.api.ScriptID;
-import net.runelite.api.events.*;
+import net.runelite.api.SpriteID;
+import net.runelite.api.SpritePixels;
+import net.runelite.api.events.BeforeRender;
+import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ScriptPostFired;
+import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.events.WidgetClosed;
+import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.InterfaceID;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetPositionMode;
+import net.runelite.api.widgets.WidgetSizeMode;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -23,6 +35,7 @@ import java.awt.*;
 import java.util.*;
 import java.util.List;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ImageUtil;
 
 
 @Slf4j
@@ -60,7 +73,10 @@ public class FixedResizableHybridPlugin extends Plugin
 	private final HashMap<Integer, WidgetState> originalStates = new HashMap<>();
 	private static final int classicResizableGroupId = InterfaceID.RESIZABLE_VIEWPORT;
 	private static final int oldSchoolBoxId = ComponentID.RESIZABLE_VIEWPORT_RESIZABLE_VIEWPORT_OLD_SCHOOL_BOX;
-	private boolean fairyWidgetLoaded = false;
+	private boolean widgetWithBackgroundLoaded = false;
+	private static final Set<String> onConfigChangedTriggerPlugins = Set.of("fixedresizablehybrid", "interfaceStyles", "runelite", "resourcepacks");
+	private final BufferedImage defaultChatboxBufferedImage = ImageUtil.loadImageResource(getClass(), "/chatbox.png");
+	private boolean cutSceneActive = false;
 
 	@Provides
 	FixedResizableHybridConfig provideConfig(ConfigManager configManager)
@@ -100,31 +116,42 @@ public class FixedResizableHybridPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (!event.getGroup().equals("fixedresizablehybrid"))
+		if (!onConfigChangedTriggerPlugins.contains(event.getGroup()))
 		{
 			return;
 		}
-		//log.debug("Config changed");
-		//Resize client if config option is enabled
-		String eventKey = event.getKey();
-		if (eventKey.equals("aspectRatioResize") && config.aspectRatioResize())
+		if (event.getGroup().equals("runelite") && !event.getKey().equals("interfacestylesplugin"))
 		{
-			clientThread.invoke(this::resizeByAspectRatio);
+			return;
 		}
-		else if (eventKey.equals("fillGapBorders")
-			|| eventKey.equals("isWideChatbox")
-			|| eventKey.equals("chatboxViewportCentering"))
+		if (event.getGroup().equals("fixedresizablehybrid"))
 		{
-			resetWidgets();
-			queuePluginInitialization();
+			clientThread.invoke(() -> {
+				if ("aspectRatioResize".equals(event.getKey()) && config.aspectRatioResize())
+				{
+					resizeByAspectRatio();
+				}
+				else
+				{
+					resetWidgets();
+					queuePluginInitialization();
+				}
+			});
 		}
+		else
+		{
+			clientThread.invoke(() -> {
+				resetWidgets();
+				queuePluginInitialization();
+			});
+		}
+
 	}
 
 
 	@Subscribe
 	public void onScriptPostFired(ScriptPostFired event)
 	{
-
 		int scriptId = event.getScriptId();
 		switch (scriptId)
 		{
@@ -136,6 +163,7 @@ public class FixedResizableHybridPlugin extends Plugin
 				if (widgetsModified && config.isWideChatbox() && getGameClientLayout() == 2)
 				{
 					//log.debug("script 904: widenChat() for window resize");
+					chatboxChanged();
 					widenChat();
 				}
 				break;
@@ -149,6 +177,14 @@ public class FixedResizableHybridPlugin extends Plugin
 			case 902: // Inventory background changed, revert it back to its old sprite
 				//log.debug("script 902: fixInvBackground()");
 				fixInvBackground();
+				if (cutSceneActive)
+				{
+					Widget invWidget = client.getWidget(classicResizableGroupId, 97);
+					if (invWidget != null && invWidget.isHidden())
+					{
+						invWidget.setHidden(false);
+					}
+				}
 				break;
 			case 901: // Game Interface Mode changes
 				//log.debug("script 901: gameClientLayoutChanged()");
@@ -165,15 +201,42 @@ public class FixedResizableHybridPlugin extends Plugin
 					//log.debug("script 175/113/{}/{}/664: chatboxChanged() and widenChat()",ScriptID.MESSAGE_LAYER_OPEN,ScriptID.MESSAGE_LAYER_CLOSE);
 					chatboxChanged();
 					widenChat();
-					if (fairyWidgetLoaded)
+					if (widgetWithBackgroundLoaded)
 					{
-						fixFairyBackground();
+						fixWidgetBackground();
 					}
 				}
 				break;
+			case 178:
+				if (widgetsModified && config.isWideChatbox() && !config.centerChatboxButtons())
+				{
+					positionChatboxButtons();
+				}
 			default:
 				break;
 		}
+	}
+
+	@Subscribe
+	public void onVarbitChanged(VarbitChanged event)
+	{
+		//cutscene
+		if (event.getVarbitId() == 542)
+		{
+			if (event.getValue() == 1)
+			{
+				cutSceneActive = true;
+			}
+			else
+			{
+				cutSceneActive = false;
+			}
+			clientThread.invokeLater(() -> {
+				chatboxChanged();
+				widenChat();
+			});
+		}
+
 	}
 
 	@Subscribe
@@ -190,21 +253,24 @@ public class FixedResizableHybridPlugin extends Plugin
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
-		if (event.getGroupId() == InterfaceID.FAIRY_RING)
+		int groupID = event.getGroupId();
+		//Fairy ring + canoe interfaces (416/647)
+		if (groupID == InterfaceID.FAIRY_RING || groupID == 416 || groupID == 647)
 		{
 			//log.debug("onWidgetLoaded(): fairy ring loaded");
-			fairyWidgetLoaded = true;
-			clientThread.invokeLater(this::fixFairyBackground);
+			widgetWithBackgroundLoaded = true;
+			clientThread.invokeLater(this::fixWidgetBackground);
 		}
 	}
 
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed event)
 	{
-		if (event.getGroupId() == InterfaceID.FAIRY_RING && event.isUnload())
+		int groupID = event.getGroupId();
+		if ((groupID == InterfaceID.FAIRY_RING || groupID == 416 || groupID == 647) && event.isUnload())
 		{
 			//log.debug("onWidgetClosed(): fairy ring closed");
-			fairyWidgetLoaded = false;
+			widgetWithBackgroundLoaded = false;
 		}
 	}
 
@@ -240,14 +306,15 @@ public class FixedResizableHybridPlugin extends Plugin
 		resizeRenderViewport();
 		resizeByAspectRatio();
 		overlayManager.add(enabledOverlays);
-		if (config.isWideChatbox())
-		{
-			hideChatSprites();
-			widenChat();
-		}
+
 		fixInterfaceDimensions();
 		repositionMinimapWidgets();
-		createFixedSprites();
+		createMinimapInvSprites();
+		if (config.isWideChatbox())
+		{
+			widenChat();
+			setupWideChatboxWidget();
+		}
 	}
 
 	private void resizeByAspectRatio()
@@ -313,36 +380,6 @@ public class FixedResizableHybridPlugin extends Plugin
 		else
 		{
 			configManager.setConfiguration("runelite", "gameSize", processedGameSize);
-		}
-	}
-
-	private void hideChatSprites()
-	{
-		//log.debug("hideChatSprites()");
-		Widget chatboxBackground = client.getWidget(ComponentID.CHATBOX_TRANSPARENT_BACKGROUND);
-		if (chatboxBackground != null)
-		{
-			chatboxBackground.setHidden(true);
-		}
-		Widget chatboxButtonsSprite = client.getWidget(InterfaceID.CHATBOX, 3);
-		if (chatboxButtonsSprite != null)
-		{
-			chatboxButtonsSprite.setHidden(true);
-		}
-	}
-
-	private void resetChatSprites()
-	{
-		//log.debug("resetChatSprites()");
-		Widget chatboxBackground = client.getWidget(ComponentID.CHATBOX_TRANSPARENT_BACKGROUND);
-		if (chatboxBackground != null)
-		{
-			chatboxBackground.setHidden(false);
-		}
-		Widget chatboxButtonsSprite = client.getWidget(InterfaceID.CHATBOX, 3);
-		if (chatboxButtonsSprite != null)
-		{
-			chatboxButtonsSprite.setHidden(false);
 		}
 	}
 
@@ -499,6 +536,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			clickWindow.setXPositionMode(0);
 			clickWindow.setYPositionMode(0);
 			clickWindow.setOriginalWidth(renderViewport.getWidth());
+			clickWindow.setOriginalHeight(renderViewport.getHeight());
 			clickWindow.revalidateScroll();
 			fixWidgetChildDimensions(clickWindow, maxDepth, 0); // Start recursive processing
 		}
@@ -560,68 +598,72 @@ public class FixedResizableHybridPlugin extends Plugin
 		}
 	}
 
-	private void fixFairyBackground()
+	private void fixWidgetBackground()
 	{
-		//log.debug("fixFairyBackground()");
-		Widget fairyBackground = client.getWidget(classicResizableGroupId, 14);
-		Widget fairyWidget = client.getWidget(classicResizableGroupId, 16);
+		Widget widgetBackground = client.getWidget(classicResizableGroupId, 14);
+		Widget widgetInterface = client.getWidget(classicResizableGroupId, 16);
 		Widget mainViewport = client.getWidget(classicResizableGroupId, 91);
 		Widget oldSchoolBox = client.getWidget(oldSchoolBoxId);
-		if (fairyBackground != null && fairyWidget != null && mainViewport != null && oldSchoolBox != null)
+
+		// Ensure all required widgets are present
+		if (widgetBackground == null || widgetInterface == null || mainViewport == null || oldSchoolBox == null)
 		{
-			Widget[] fairyBackgroundWidgets = fairyBackground.getDynamicChildren();
-			if (fairyBackgroundWidgets.length == 4)
+			return;
+		}
+
+		Widget[] backgroundChildren = widgetBackground.getDynamicChildren();
+		if (backgroundChildren.length != 4)
+		{
+			return; // Exit if the expected four background sprites are not present
+		}
+
+		Widget topBackground = backgroundChildren[0];
+		Widget bottomBackground = backgroundChildren[1];
+		Widget leftBackground = backgroundChildren[2];
+		Widget rightBackground = backgroundChildren[3];
+
+		boolean chatIsOpen = isChatboxOpen();
+
+		int topHeight = widgetInterface.getRelativeY();
+		int leftWidth = widgetInterface.getRelativeX();
+		int rightWidth = oldSchoolBox.getWidth() - widgetInterface.getWidth() - leftWidth;
+
+		// Set widths for the left and right background widgets
+		leftBackground.setOriginalWidth(leftWidth);
+		rightBackground.setOriginalWidth(rightWidth);
+
+		int bottomHeight;
+
+		if (config.isWideChatbox())
+		{
+			// Wide chatbox adjustments
+			if (chatIsOpen)
 			{
-				Widget topFairyBackground = fairyBackgroundWidgets[0];
-				Widget bottomFairyBackground = fairyBackgroundWidgets[1];
-				Widget leftFairyBackground = fairyBackgroundWidgets[2];
-				Widget rightFairyBackground = fairyBackgroundWidgets[3];
-
-				boolean chatIsOpen = isChatboxOpen();
-				int topHeight;
-				int bottomHeight;
-				int leftWidth = fairyWidget.getRelativeX();
-				int rightWidth = oldSchoolBox.getWidth() - fairyWidget.getWidth() - leftWidth;
-
-				leftFairyBackground.setOriginalWidth(leftWidth);
-				rightFairyBackground.setOriginalWidth(rightWidth);
-
-				if (config.isWideChatbox())
-				{
-					topHeight = fairyWidget.getRelativeY();
-
-
-					if (chatIsOpen)
-					{
-
-						bottomHeight = oldSchoolBox.getHeight() - fairyWidget.getHeight() - topHeight;
-						bottomFairyBackground.setOriginalY(oldSchoolBox.getParent().getHeight() - oldSchoolBox.getHeight());
-
-					}
-					else
-					{ //chat closed (doesn't change regardless of if viewport centering is enabled)
-						bottomHeight = (oldSchoolBox.getParent().getHeight() - 23) - fairyWidget.getHeight() - topHeight;
-						bottomFairyBackground.setOriginalY(23);
-					}
-					bottomFairyBackground.setOriginalHeight(bottomHeight);
-
-				}
-				else
-				{
-					topHeight = fairyWidget.getRelativeY();
-					bottomHeight = mainViewport.getHeight() - topHeight - fairyWidget.getHeight();
-					bottomFairyBackground.setOriginalHeight(bottomHeight);
-					//log.debug("d");
-				}
-
-				leftFairyBackground.setOriginalY(topHeight);
-				rightFairyBackground.setOriginalY(topHeight);
-				topFairyBackground.setOriginalHeight(topHeight);
-
-				fairyBackground.revalidateScroll();
+				bottomHeight = oldSchoolBox.getHeight() - widgetInterface.getHeight() - topHeight;
+				bottomBackground.setOriginalY(oldSchoolBox.getParent().getHeight() - oldSchoolBox.getHeight());
+			}
+			else
+			{
+				// Chat closed case remains the same regardless of viewport centering
+				bottomHeight = oldSchoolBox.getParent().getHeight() - widgetInterface.getHeight() - topHeight - 23;
+				bottomBackground.setOriginalY(23);
 			}
 		}
+		else
+		{
+			bottomHeight = mainViewport.getHeight() - topHeight - widgetInterface.getHeight();
+		}
+
+		// Set final heights and Y-positions
+		topBackground.setOriginalHeight(topHeight);
+		bottomBackground.setOriginalHeight(bottomHeight);
+		leftBackground.setOriginalY(topHeight);
+		rightBackground.setOriginalY(topHeight);
+
+		// Revalidate the widget background to apply changes
+		widgetBackground.revalidateScroll();
 	}
+
 
 	private void fixWidgetChildDimensions(Widget widget, int maxDepth, int currentDepth)
 	{
@@ -681,7 +723,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			removeAddedWidgets();
 			resetRenderViewport();
 			resetOriginalStates(); // sets widgetModified to false too
-			resetChatSprites();
+			restoreSprites();
 		});
 	}
 
@@ -925,7 +967,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	}
 
 	// Creates new widgets (defined by newSpriteConfigs) that weren't originally loaded in classic-resizable
-	private void createFixedSprites()
+	private void createMinimapInvSprites()
 	{
 		//log.debug("createFixedSprites()");
 		// Get the parent widget the sprites should be under
@@ -937,16 +979,16 @@ public class FixedResizableHybridPlugin extends Plugin
 		if (minimapDrawArea != null && minimapDrawArea.getParent() != null && inventoryParentWidget != null)
 		{
 			int[][] newSpriteConfigs = {
-				{1, 5, 1182, 29, 4, 172, 156, 0, 0, 0, 0, 0},  // centerMinimapSprite
-				{1, 5, 1611, 0, 160, 249, 8, 1, 0, 0, 0, 0},   // bottomMinimapSprite
-				{1, 5, 1037, 0, 4, 29, 156, 0, 0, 0, 0, 0},    // leftMinimapSprite
-				{1, 5, 1038, 0, 4, 48, 156, 2, 0, 0, 0, 0},    // rightMinimapSprite
-				{1, 5, 1039, 48, 0, 717, 4, 2, 0, 0, 0, 0},    // topThinBarRight
-				{1, 5, 1441, 0, 0, 48, 4, 2, 0, 0, 0, 0},      // topThinBarLeft
-				{2, 5, 1035, 0, 37, 28, 261, 2, 2, 0, 0, 0}, // right inv column
-				{2, 5, 1033, 0, 38, 31, 133, 0, 0, 0, 0, 0}, // left inv column top half
-				{2, 5, 1034, 3, 171, 28, 128, 0, 0, 0, 0, 0},  // left inv column bottom half
-				{2, 5, 1033, 0, 0, 3, 170, 0, 2, 0, 0, 0} // left tiny strip to the left of bottom half
+				{1, 5, 1182, 29, 4, 172, 156, 0, 0, 0, 0, 0, 0},  // centerMinimapSprite
+				{1, 5, 1611, 0, 160, 249, 8, 1, 0, 0, 0, 0, 0},   // bottomMinimapSprite
+				{1, 5, 1037, 0, 4, 29, 156, 0, 0, 0, 0, 0, 0},    // leftMinimapSprite
+				{1, 5, 1038, 0, 4, 48, 156, 2, 0, 0, 0, 0, 0},    // rightMinimapSprite
+				{1, 5, 1039, 48, 0, 717, 4, 2, 0, 0, 0, 0, 0},    // topThinBarRight
+				{1, 5, 1441, 0, 0, 48, 4, 2, 0, 0, 0, 0, 0},      // topThinBarLeft
+				{2, 5, 1035, 0, 37, 28, 261, 2, 2, 0, 0, 0, 0}, // right inv column
+				{2, 5, 1033, 0, 38, 31, 133, 0, 0, 0, 0, 0, 0}, // left inv column top half
+				{2, 5, 1034, 3, 171, 28, 128, 0, 0, 0, 0, 0, 0},  // left inv column bottom half
+				{2, 5, 1033, 0, 0, 3, 170, 0, 2, 0, 0, 0, 0} // left tiny strip to the left of bottom half
 			};
 			//Ensure the bounds on the parent container(s) are properly prepared.
 			inventoryWidgetBoundsFix();
@@ -955,37 +997,56 @@ public class FixedResizableHybridPlugin extends Plugin
 			Widget minimapParentWidget = minimapDrawArea.getParent(); // same as client.getWidget(161,22); but uses ComponentID reference
 			for (int[] newSpriteConfig : newSpriteConfigs)
 			{
-				Widget parentWidget = null;
 				if (newSpriteConfig[0] == 1)
 				{
-					parentWidget = minimapParentWidget;
+					newSpriteConfig[0] = minimapParentWidget.getId();
 				}
 				else if (newSpriteConfig[0] == 2)
 				{
-					parentWidget = inventoryParentWidget;
+					newSpriteConfig[0] = inventoryParentWidget.getId();
+				}
+				else
+				{
+					newSpriteConfig[0] = -1;
 				}
 				// extra null check here in case we add new added widgets later, should never be null given current newSpriteConfigs
-				if (parentWidget != null)
+				if (newSpriteConfig[0] != -1)
 				{
-					Widget minimapSprite = parentWidget.createChild(newSpriteConfig[1]);
-					minimapSprite.setSpriteId(newSpriteConfig[2]);
-					minimapSprite.setOriginalX(newSpriteConfig[3]);
-					minimapSprite.setOriginalY(newSpriteConfig[4]);
-					minimapSprite.setOriginalWidth(newSpriteConfig[5]);
-					minimapSprite.setOriginalHeight(newSpriteConfig[6]);
-					minimapSprite.setXPositionMode(newSpriteConfig[7]);
-					minimapSprite.setYPositionMode(newSpriteConfig[8]);
-					minimapSprite.setWidthMode(newSpriteConfig[9]);
-					minimapSprite.setHeightMode(newSpriteConfig[10]);
-					if (newSpriteConfig[11] == 1)
-					{
-						minimapSprite.setNoClickThrough(true);
-					}
-					minimapSprite.getParent().revalidate();
-					minimapSprite.revalidate();
+					createNewSpriteWidget(newSpriteConfig);
 				}
 			}
 		}
+	}
+
+	private Widget createNewSpriteWidget(int[] widgetConfig)
+	{
+		Widget parent = client.getWidget(widgetConfig[0]);
+		if (parent != null)
+		{
+			Widget newSprite = parent.createChild(widgetConfig[1]);
+			log.debug("created new child");
+			newSprite.setSpriteId(widgetConfig[2]);
+			newSprite.setOriginalX(widgetConfig[3]);
+			newSprite.setOriginalY(widgetConfig[4]);
+			newSprite.setOriginalWidth(widgetConfig[5]);
+			newSprite.setOriginalHeight(widgetConfig[6]);
+			newSprite.setXPositionMode(widgetConfig[7]);
+			newSprite.setYPositionMode(widgetConfig[8]);
+			newSprite.setWidthMode(widgetConfig[9]);
+			newSprite.setHeightMode(widgetConfig[10]);
+			if (widgetConfig[11] == 1)
+			{
+				newSprite.setNoClickThrough(true);
+			}
+			if (widgetConfig[12] == 1)
+			{
+				newSprite.setSpriteTiling(true);
+			}
+			parent.revalidateScroll();
+
+			return newSprite;
+		}
+		return null;
 	}
 
 	// Sets up the coordinates and bounds on the inventory panel widget prior to creating the fixed background sprites
@@ -1115,40 +1176,41 @@ public class FixedResizableHybridPlugin extends Plugin
 	//Runs after onPostScript when opening or closing of the chatbox. Handles recentering the viewport for Wide chat mode only.
 	private void chatboxChanged()
 	{
-		if (config.isWideChatbox() && getGameClientLayout() == 2)
+		if (!config.isWideChatbox() || getGameClientLayout() != 2)
 		{
-			//log.debug("chatboxChanged()");
-			Widget mainViewport = client.getWidget(classicResizableGroupId, 91);
-			Widget chatboxFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
-			Widget oldSchoolBox = client.getWidget(oldSchoolBoxId);
-			Widget osbParent = oldSchoolBox.getParent();
-			if (mainViewport != null && chatboxFrame != null)
-			{
-				//chatbox opened
-				if (isChatboxOpen() && config.chatboxViewportCentering())
-				{
-					mainViewport.setOriginalHeight(165);
-					mainViewport.setYPositionMode(0);
-					mainViewport.revalidateScroll();
-//					osbParent.setOriginalHeight(mainViewport.getHeight());
-//					osbParent.revalidateScroll();
-//					oldSchoolBox.setOriginalHeight(0);
-//					oldSchoolBox.revalidateScroll();
-				}
-				else
-				{
-					//chatbox closed
-					mainViewport.setOriginalHeight(23);
-					mainViewport.setYPositionMode(0);
-					mainViewport.revalidateScroll();
-//					osbParent.setOriginalHeight(mainViewport.getHeight() + 23);
-//					osbParent.revalidateScroll();
-//					oldSchoolBox.setOriginalHeight(165);
-//					oldSchoolBox.revalidateScroll();
-				}
-			}
-			fixInterfaceDimensions();
+			return;
 		}
+
+		Widget mainViewport = client.getWidget(classicResizableGroupId, 91);
+		Widget chatboxFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
+		Widget chatboxParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_CHATBOX_PARENT);
+		if (mainViewport == null || chatboxFrame == null || chatboxParent == null)
+		{
+			return;
+		}
+
+		int baseHeight = (isChatboxOpen() && config.chatboxViewportCentering()) ? 165 : 23;
+		mainViewport.setOriginalHeight(baseHeight + chatboxParent.getOriginalY());
+		mainViewport.setYPositionMode(0);
+		mainViewport.revalidateScroll();
+
+		Widget chatboxBackgroundParent = client.getWidget(ComponentID.CHATBOX_TRANSPARENT_BACKGROUND);
+		if (chatboxBackgroundParent != null)
+		{
+			int childrenCount = chatboxBackgroundParent.getDynamicChildren().length;
+			if (childrenCount == 1)
+			{
+				setupWideChatboxWidget();
+			}
+			else if (childrenCount == 4)
+			{
+				Widget middleChatBackground = chatboxBackgroundParent.getDynamicChildren()[1];
+				int newWidth = (int) Math.ceil((579.0 / 519.0) * (client.getCanvasWidth() - 249) - 60);
+				middleChatBackground.setOriginalWidth(newWidth);
+			}
+		}
+
+		fixInterfaceDimensions();
 	}
 
 
@@ -1159,21 +1221,22 @@ public class FixedResizableHybridPlugin extends Plugin
 		{
 			return;
 		}
-		Widget mainViewport = client.getWidget(classicResizableGroupId, 91);
-		if (mainViewport == null)
+		Widget canvas = client.getWidget(classicResizableGroupId, 0);
+		if (canvas == null)
 		{
 			return;
 		}
-		int wideChatboxWidth = mainViewport.getWidth();
-
+		int wideChatboxWidth = canvas.getWidth() - 249;
 		Widget chatParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_CHATBOX_PARENT);//161.96
 		if (chatParent != null)
 		{
 			saveWidgetState(chatParent);
 			chatParent.setOriginalWidth(wideChatboxWidth);
+			chatParent.setOriginalX(0);
+			chatParent.setXPositionMode(0);
 			chatParent.revalidateScroll();
 		}
-		Widget chatFrame = client.getWidget(ComponentID.CHATBOX_FRAME); //162.34
+		Widget chatFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
 		if (chatFrame != null)
 		{
 			saveWidgetState(chatFrame);
@@ -1195,19 +1258,250 @@ public class FixedResizableHybridPlugin extends Plugin
 			reportAbuseDialogueSprite.setHidden(true);
 		}
 		// Cooking/fletching background removal
-		Widget makingDialogSprite = client.getWidget(270, 1);
-		if (makingDialogSprite != null)
+		Widget skillingDialogBackgroundSprite = client.getWidget(270, 1);
+		if (skillingDialogBackgroundSprite != null)
 		{
-			saveWidgetState(makingDialogSprite);
-			makingDialogSprite.setHidden(true);
+			saveWidgetState(skillingDialogBackgroundSprite);
+			skillingDialogBackgroundSprite.setHidden(true);
 		}
 		//Center chat buttons on viewport
-		Widget chatButtons = client.getWidget(ComponentID.CHATBOX_BUTTONS); //162.1
-		if (chatButtons != null)
+		positionChatboxButtons();
+	}
+
+	private void positionChatboxButtons()
+	{
+		Widget chatButtonsParent = client.getWidget(ComponentID.CHATBOX_BUTTONS);
+		if (chatButtonsParent == null)
 		{
-			saveWidgetState(chatButtons);
-			chatButtons.setXPositionMode(1);
-			chatButtons.revalidateScroll();
+			return;
+		}
+		saveWidgetState(chatButtonsParent);
+		chatButtonsParent.setOriginalWidth(0);
+		chatButtonsParent.setWidthMode(WidgetSizeMode.MINUS);
+		chatButtonsParent.revalidateScroll();
+
+		Widget[] chatButtonsWidgets = chatButtonsParent.getStaticChildren();
+		Widget reportButton = client.getWidget(162, 31);
+		for (int i = 0; i < chatButtonsWidgets.length; i++)
+		{
+			if (i == 0)
+			{
+				Widget[] children = chatButtonsWidgets[i].getStaticChildren();
+				if (children.length > 0 && children[0] != null)
+				{
+					//First child contains the buttons background sprite
+					Widget chatButtonsBackground = children[0];
+					saveWidgetState(chatButtonsBackground);
+					chatButtonsBackground.setOriginalWidth(0);
+					chatButtonsBackground.setWidthMode(WidgetSizeMode.MINUS);
+					chatButtonsBackground.revalidate();
+				}
+			}
+			else
+			{
+				Widget chatButton = chatButtonsWidgets[i];
+				if (chatButton == null)
+				{
+					continue;
+				}
+				saveWidgetState(chatButton);
+				int chatButtonX = originalStates.get(chatButton.getId()).getOriginalX();
+				int chatButtonWidth = originalStates.get(chatButton.getId()).getOriginalWidth();
+				int chatWidth = chatButtonsParent.getWidth();
+				int defaultChatWidth = 519;
+				if (config.centerChatboxButtons())
+				{
+					int newButtonX = ((chatWidth - defaultChatWidth) / 2) + chatButtonX;
+					chatButton.setOriginalX(newButtonX);
+					chatButton.setOriginalWidth(chatButtonWidth);
+					Widget[] children = chatButton.getStaticChildren();
+					if (children.length > 0 && children[0] != null && reportButton != null && chatButton != reportButton)
+					{
+						children[0].setOriginalWidth(chatButtonWidth);
+					}
+				}
+				else
+				{
+					int newButtonX = chatWidth * chatButtonX / defaultChatWidth;
+					int newButtonWidth = chatWidth * chatButtonWidth / defaultChatWidth;
+					Widget[] children = chatButton.getStaticChildren();
+					if (children.length > 0 && children[0] != null && reportButton != null && chatButton != reportButton)
+					{
+						children[0].setOriginalWidth(newButtonWidth);
+					}
+					chatButton.setOriginalX(newButtonX);
+					chatButton.setOriginalWidth(newButtonWidth);
+				}
+				chatButton.revalidateScroll();
+			}
+		}
+	}
+
+
+	private SpritePixels getFileSpritePixels(String file)
+	{
+		try
+		{
+			log.debug("Loading: {}", file);
+			BufferedImage image = ImageUtil.loadImageResource(this.getClass(), file);
+			return ImageUtil.getImageSpritePixels(image, client);
+		}
+		catch (RuntimeException ex)
+		{
+			log.debug("Unable to load image: ", ex);
+		}
+
+		return null;
+	}
+
+	private SpritePixels getBufferedImageSpritePixels(BufferedImage image)
+	{
+		try
+		{
+			return ImageUtil.getImageSpritePixels(image, client);
+		}
+		catch (RuntimeException ex)
+		{
+			log.debug("Unable to process buffered image: ", ex);
+		}
+		return null;
+	}
+
+	private String extractSpriteToBase64(SpritePixels spritePixels)
+	{
+		// Try to get the sprite from the client's sprite overrides.
+		if (spritePixels == null)
+		{
+			// No sprite was found in the override map.
+			// This may be because the skin is default (i.e. no override) or the sprite is loaded from elsewhere.
+			log.debug("No sprite found for spriteID: {}", SpriteID.CHATBOX);
+			return null;
+		}
+
+		// Convert the SpritePixels to a BufferedImage.
+		BufferedImage image = spritePixels.toBufferedImage();
+
+		try (ByteArrayOutputStream baos = new ByteArrayOutputStream())
+		{
+			// Write the BufferedImage as a PNG.
+			ImageIO.write(image, "png", baos);
+			byte[] imageBytes = baos.toByteArray();
+
+			// Encode the PNG image as a Base64 string.
+			String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+			log.debug("Image:{}", base64Image);
+			return base64Image;
+		}
+		catch (Exception e)
+		{
+			log.error("Error converting sprite to PNG", e);
+			return null;
+		}
+	}
+
+	private void restoreSprites()
+	{
+		client.getWidgetSpriteCache().reset();
+		client.getSpriteOverrides().remove(-8001);
+		client.getSpriteOverrides().remove(-8002);
+		client.getSpriteOverrides().remove(-8003);
+	}
+
+	private void setupChatboxSprites()
+	{
+		SpritePixels overrideSprite = client.getSpriteOverrides().get(SpriteID.CHATBOX);
+		BufferedImage chatboxImage = (overrideSprite != null) ? overrideSprite.toBufferedImage() : defaultChatboxBufferedImage;
+
+		// Crop left/right borders and convert images to sprites
+		int edgeWidth = 30;
+		int height = chatboxImage.getHeight();
+		int width = chatboxImage.getWidth();
+		SpritePixels leftSpritePixels = getBufferedImageSpritePixels(chatboxImage.getSubimage(0, 0, edgeWidth, height));
+		SpritePixels rightSpritePixels = getBufferedImageSpritePixels(chatboxImage.getSubimage(width - edgeWidth, 0, edgeWidth, height));
+		SpritePixels fullSpritePixels = getBufferedImageSpritePixels(chatboxImage);
+
+		// Reset and override sprites
+		restoreSprites();
+		client.getSpriteOverrides().put(-8001, fullSpritePixels);
+		client.getSpriteOverrides().put(-8002, leftSpritePixels);
+		client.getSpriteOverrides().put(-8003, rightSpritePixels);
+		client.getWidgetSpriteCache().reset();
+	}
+
+	private void createNewChatboxSprites()
+	{
+		if (!config.isWideChatbox())
+		{
+			return;
+		}
+
+		// Retrieve required widgets.
+		Widget canvas = client.getWidget(classicResizableGroupId, 0); // Provides the viewport width.
+		Widget chatboxFrame = client.getWidget(ComponentID.CHATBOX_FRAME);
+		Widget chatboxButtons = client.getWidget(ComponentID.CHATBOX_BUTTONS);
+		Widget chatboxBackgroundParent = client.getWidget(ComponentID.CHATBOX_TRANSPARENT_BACKGROUND);
+
+		// Ensure all widgets exist.
+		if (canvas == null || chatboxFrame == null || chatboxButtons == null || chatboxBackgroundParent == null)
+		{
+			return;
+		}
+
+		// Calculate dimensions.
+		final int WIDTH_OFFSET = 249;
+		final int EDGE_WIDTH = 30;
+		int totalWidth = canvas.getWidth() - WIDTH_OFFSET;
+
+		Widget[] chatBackgroundChildren = chatboxBackgroundParent.getDynamicChildren();
+		if (chatboxFrame.isHidden() || chatBackgroundChildren.length != 1 || chatBackgroundChildren[0] == null)
+		{
+			return;
+		}
+
+		// Calculate middle width using the provided formula.
+		final double MULTIPLIER = 579.0 / 519.0;
+		final int MIDDLE_OFFSET = 60;
+		int middleWidth = (int) Math.ceil(MULTIPLIER * totalWidth - MIDDLE_OFFSET);
+
+		// Create middle sprite.
+		// [widget, type, spriteId, originalX, originalY, originalWidth, originalHeight,
+		//  xPositionMode, yPositionMode, widthMode, heightMode, noclickthrough, spriteTiling]
+		int[] middleChatBackgroundParentSettings = {
+			chatboxBackgroundParent.getId(), 5, -8001,
+			0, 0, middleWidth, 0,
+			WidgetPositionMode.ABSOLUTE_CENTER, WidgetPositionMode.ABSOLUTE_TOP,
+			WidgetSizeMode.ABSOLUTE, WidgetSizeMode.MINUS,
+			0, 0
+		};
+		createNewSpriteWidget(middleChatBackgroundParentSettings);
+
+		// Create left sprite.
+		int[] leftChatBackgroundParentSettings = {
+			chatboxBackgroundParent.getId(), 5, -8002,
+			0, 0, EDGE_WIDTH, 0,
+			WidgetPositionMode.ABSOLUTE_LEFT, WidgetPositionMode.ABSOLUTE_TOP,
+			WidgetSizeMode.ABSOLUTE, WidgetSizeMode.MINUS,
+			0, 0
+		};
+		createNewSpriteWidget(leftChatBackgroundParentSettings);
+
+		// Create right sprite.
+		int[] rightChatBackgroundParentSettings = {
+			chatboxBackgroundParent.getId(), 5, -8003,
+			0, 0, EDGE_WIDTH, 0,
+			WidgetPositionMode.ABSOLUTE_RIGHT, WidgetPositionMode.ABSOLUTE_TOP,
+			WidgetSizeMode.ABSOLUTE, WidgetSizeMode.MINUS,
+			0, 0
+		};
+		createNewSpriteWidget(rightChatBackgroundParentSettings);
+	}
+
+	private void setupWideChatboxWidget()
+	{
+		if (config.isWideChatbox())
+		{
+			setupChatboxSprites();
+			createNewChatboxSprites();
 		}
 	}
 
@@ -1223,4 +1517,5 @@ public class FixedResizableHybridPlugin extends Plugin
 		//log.debug("isChatboxOpen: {} bc frame null",false);
 		return false;
 	}
+
 }
