@@ -13,6 +13,7 @@ import net.runelite.api.GameState;
 import net.runelite.api.ScriptID;
 import net.runelite.api.SpriteID;
 import net.runelite.api.SpritePixels;
+import net.runelite.api.Varbits;
 import net.runelite.api.events.BeforeRender;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ScriptPostFired;
@@ -77,6 +78,8 @@ public class FixedResizableHybridPlugin extends Plugin
 	private static final Set<String> onConfigChangedTriggerPlugins = Set.of("fixedresizablehybrid", "interfaceStyles", "runelite", "resourcepacks");
 	private final BufferedImage defaultChatboxBufferedImage = ImageUtil.loadImageResource(getClass(), "/chatbox.png");
 	private boolean cutSceneActive = false;
+	private boolean transparentChatbox = false;
+	private int wideChatViewportOffset = 23;
 
 	@Provides
 	FixedResizableHybridConfig provideConfig(ConfigManager configManager)
@@ -116,20 +119,29 @@ public class FixedResizableHybridPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (!onConfigChangedTriggerPlugins.contains(event.getGroup()))
+		String group = event.getGroup();
+		String key = event.getKey();
+		if (!onConfigChangedTriggerPlugins.contains(group))
 		{
 			return;
 		}
-		if (event.getGroup().equals("runelite") && !event.getKey().equals("interfacestylesplugin"))
+
+		// If it's the "runelite" group, only handle "interfacestylesplugin" key
+		if ("runelite".equals(group) && !"interfacestylesplugin".equals(key))
 		{
 			return;
 		}
-		if (event.getGroup().equals("fixedresizablehybrid"))
+		if ("fixedresizablehybrid".equals(group))
 		{
-			clientThread.invoke(() -> {
-				if ("aspectRatioResize".equals(event.getKey()) && config.aspectRatioResize())
+			clientThread.invoke(() ->
+			{
+				if ("aspectRatioResize".equals(key) && config.aspectRatioResize())
 				{
 					resizeByAspectRatio();
+				}
+				else if ("chatboxViewportCentering".equals(key) && transparentChatbox)
+				{
+					configManager.setConfiguration("fixedresizablehybrid", "chatboxViewportCentering", false);
 				}
 				else
 				{
@@ -140,12 +152,12 @@ public class FixedResizableHybridPlugin extends Plugin
 		}
 		else
 		{
-			clientThread.invoke(() -> {
+			clientThread.invoke(() ->
+			{
 				resetWidgets();
 				queuePluginInitialization();
 			});
 		}
-
 	}
 
 
@@ -212,6 +224,10 @@ public class FixedResizableHybridPlugin extends Plugin
 				{
 					positionChatboxButtons();
 				}
+			case 4731:
+				// TOB widget fix (party orbs flicker if omitted)
+				fixIngameOverlayWidgets();
+				break;
 			default:
 				break;
 		}
@@ -236,7 +252,24 @@ public class FixedResizableHybridPlugin extends Plugin
 				widenChat();
 			});
 		}
-
+		else if (event.getVarbitId() == Varbits.TRANSPARENT_CHATBOX)
+		{
+			if (event.getValue() == 1)
+			{
+				transparentChatbox = true;
+				wideChatViewportOffset = 0;
+				configManager.setConfiguration(
+					"fixedresizablehybrid",
+					"chatboxViewportCentering",
+					false
+				);
+			}
+			else if (event.getValue() == 0)
+			{
+				transparentChatbox = false;
+				wideChatViewportOffset = 23;
+			}
+		}
 	}
 
 	@Subscribe
@@ -524,7 +557,7 @@ public class FixedResizableHybridPlugin extends Plugin
 	// Used in volcanic mine overlay fix. There are likely other widgets this fixes too (minigame overlays)
 	private void fixIngameOverlayWidgets()
 	{
-		int maxDepth = 3;
+		int maxDepth = 4;
 		if (!widgetsModified)
 		{
 			return;
@@ -570,7 +603,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			}
 			else if (config.isWideChatbox())
 			{
-				if (isChatboxOpen() && config.chatboxViewportCentering())
+				if (isChatboxOpen() && config.chatboxViewportCentering() && !transparentChatbox)
 				{
 					osbParent.setOriginalHeight(renderViewportHeight);
 					osbParent.revalidateScroll();
@@ -579,7 +612,7 @@ public class FixedResizableHybridPlugin extends Plugin
 				}
 				else
 				{
-					osbParent.setOriginalHeight(renderViewportHeight + 23);
+					osbParent.setOriginalHeight(renderViewportHeight + wideChatViewportOffset);
 					osbParent.revalidateScroll();
 					oldSchoolBox.setOriginalHeight(165);
 					oldSchoolBox.revalidateScroll();
@@ -688,6 +721,12 @@ public class FixedResizableHybridPlugin extends Plugin
 			if ((child.getOriginalWidth() >= 248 && child.getOriginalWidth() <= 254) && child.getWidthMode() == 1)
 			{
 				child.setOriginalWidth(0);
+			}
+			if (child.getOriginalHeight() >= 164 && child.getOriginalHeight() <= 172 && child.getHeightMode() == 1
+				&& config.isWideChatbox() && config.chatboxViewportCentering()
+				&& isChatboxOpen())
+			{
+				child.setOriginalHeight(0);
 			}
 			if (staticChildren)
 			{
@@ -1024,7 +1063,6 @@ public class FixedResizableHybridPlugin extends Plugin
 		if (parent != null)
 		{
 			Widget newSprite = parent.createChild(widgetConfig[1]);
-			log.debug("created new child");
 			newSprite.setSpriteId(widgetConfig[2]);
 			newSprite.setOriginalX(widgetConfig[3]);
 			newSprite.setOriginalY(widgetConfig[4]);
@@ -1189,7 +1227,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			return;
 		}
 
-		int baseHeight = (isChatboxOpen() && config.chatboxViewportCentering()) ? 165 : 23;
+		int baseHeight = (isChatboxOpen() && config.chatboxViewportCentering()) ? 165 : wideChatViewportOffset;
 		mainViewport.setOriginalHeight(baseHeight + chatboxParent.getOriginalY());
 		mainViewport.setYPositionMode(0);
 		mainViewport.revalidateScroll();
@@ -1249,7 +1287,11 @@ public class FixedResizableHybridPlugin extends Plugin
 			saveWidgetState(dialogueOptions);
 			dialogueOptions.setOriginalX(0);
 			dialogueOptions.setXPositionMode(1);
-			dialogueOptions.getParent().revalidateScroll();
+			Widget dialogueOptionsParent = dialogueOptions.getParent();
+			if (dialogueOptionsParent != null)
+			{
+				dialogueOptionsParent.revalidateScroll();
+			}
 		}
 		Widget reportAbuseDialogueSprite = client.getWidget(875, 1);
 		if (reportAbuseDialogueSprite != null)
@@ -1337,23 +1379,6 @@ public class FixedResizableHybridPlugin extends Plugin
 		}
 	}
 
-
-	private SpritePixels getFileSpritePixels(String file)
-	{
-		try
-		{
-			log.debug("Loading: {}", file);
-			BufferedImage image = ImageUtil.loadImageResource(this.getClass(), file);
-			return ImageUtil.getImageSpritePixels(image, client);
-		}
-		catch (RuntimeException ex)
-		{
-			log.debug("Unable to load image: ", ex);
-		}
-
-		return null;
-	}
-
 	private SpritePixels getBufferedImageSpritePixels(BufferedImage image)
 	{
 		try
@@ -1365,38 +1390,6 @@ public class FixedResizableHybridPlugin extends Plugin
 			log.debug("Unable to process buffered image: ", ex);
 		}
 		return null;
-	}
-
-	private String extractSpriteToBase64(SpritePixels spritePixels)
-	{
-		// Try to get the sprite from the client's sprite overrides.
-		if (spritePixels == null)
-		{
-			// No sprite was found in the override map.
-			// This may be because the skin is default (i.e. no override) or the sprite is loaded from elsewhere.
-			log.debug("No sprite found for spriteID: {}", SpriteID.CHATBOX);
-			return null;
-		}
-
-		// Convert the SpritePixels to a BufferedImage.
-		BufferedImage image = spritePixels.toBufferedImage();
-
-		try (ByteArrayOutputStream baos = new ByteArrayOutputStream())
-		{
-			// Write the BufferedImage as a PNG.
-			ImageIO.write(image, "png", baos);
-			byte[] imageBytes = baos.toByteArray();
-
-			// Encode the PNG image as a Base64 string.
-			String base64Image = Base64.getEncoder().encodeToString(imageBytes);
-			log.debug("Image:{}", base64Image);
-			return base64Image;
-		}
-		catch (Exception e)
-		{
-			log.error("Error converting sprite to PNG", e);
-			return null;
-		}
 	}
 
 	private void restoreSprites()

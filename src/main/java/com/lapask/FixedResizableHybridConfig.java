@@ -111,6 +111,7 @@ public interface FixedResizableHybridConfig extends Config
 		keyName = "chatboxViewportCentering",
 		name = "Viewport Centering",
 		description = "Requires \"Wide Chatbox\" to be enabled.<br>"
+			+ "Does not work if chatbox is transparent (ingame settings).<br>"
 			+ "Recenters the viewport depending on whether the chat is open or closed.<br>"
 			+ "If this is not enabled, viewport will remain the height of the window when chat is open.",
 		position = 2,
