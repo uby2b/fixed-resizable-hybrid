@@ -17,7 +17,7 @@ public class FixedResizableHybridOverlay extends Overlay
 	private final Client client;
 	//private final FixedResizableHybridPlugin plugin;
 	private final FixedResizableHybridConfig config;
-
+	private static final Image gapBorder = ImageUtil.loadImageResource(FixedResizableHybridPlugin.class, "/border15px.png");
 	@Inject
 	public FixedResizableHybridOverlay(Client client, FixedResizableHybridConfig config, FixedResizableHybridPlugin plugin)
 	{
@@ -44,8 +44,6 @@ public class FixedResizableHybridOverlay extends Overlay
 		graphics.fill(overlayBounds);
 		if (config.useGapBorders())
 		{
-			Image gapBorder = ImageUtil.loadImageResource(FixedResizableHybridPlugin.class, "/border15px.png");
-
 			// inventory gap border
 			Widget inventoryParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_INVENTORY_PARENT);
 			if (inventoryParent != null)

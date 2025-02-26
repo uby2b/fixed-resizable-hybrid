@@ -131,6 +131,6 @@ public interface FixedResizableHybridConfig extends Config
 	)
 	default boolean centerChatboxButtons()
 	{
-		return false;
+		return true;
 	}
 }
