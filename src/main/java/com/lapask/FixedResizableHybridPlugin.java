@@ -4,8 +4,6 @@ import com.google.inject.Inject;
 import com.google.inject.Provides;
 import com.lapask.config.ResizeBy;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
@@ -29,7 +27,6 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
-import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import java.awt.*;
@@ -59,9 +56,6 @@ public class FixedResizableHybridPlugin extends Plugin
 
 	@Inject
 	private ClientThread clientThread;
-
-	@Inject
-	private KeyManager keyManager;
 
 	@Inject
 	private OverlayManager overlayManager;
