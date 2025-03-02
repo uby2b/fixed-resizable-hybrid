@@ -2,6 +2,7 @@ package com.lapask;
 
 import com.google.inject.Inject;
 import com.google.inject.Provides;
+import com.lapask.config.OrbsPosition;
 import com.lapask.config.ResizeBy;
 import java.awt.image.BufferedImage;
 import lombok.extern.slf4j.Slf4j;
@@ -180,8 +181,10 @@ public class FixedResizableHybridPlugin extends Plugin
 				fixInterfaceDimensions();
 				repositionMinimapWidgets();
 				break;
-			case 902: // Inventory background changed, revert it back to its old sprite
-				//log.debug("script 902: fixInvBackground()");
+			case 902: // Inventory background changed, revert it back to its old sprite and unhide inv if in cutscene
+				// Also fail-safe for loading sprites
+				//log.debug("script 902: fixInvBackground(), checkSprites()");
+				checkMinimapSprites();
 				fixInvBackground();
 				if (cutSceneActive)
 				{
@@ -524,7 +527,7 @@ public class FixedResizableHybridPlugin extends Plugin
 			Widget wikiBanner = client.getWidget(ComponentID.MINIMAP_WIKI_BANNER_PARENT);
 			Widget storeOrb = client.getWidget(160, 42);
 			Widget activityAdviserOrb = client.getWidget(160, 47);
-
+			OrbsPosition positionMode = config.orbsPosition();
 			if (worldMapOrb != null && worldMapOrb.getOriginalX() == 0)
 			{
 				saveWidgetState(worldMapOrb);
@@ -978,24 +981,45 @@ public class FixedResizableHybridPlugin extends Plugin
 					wdgToAdj.revalidateScroll();
 				}
 			}
+			if (config.orbsPosition() == OrbsPosition.FIXED_MODE)
+			{
+				setWidgetCoordinates(ComponentID.MINIMAP_RUN_ORB, 10, 97);
+				setWidgetCoordinates(ComponentID.MINIMAP_SPEC_ORB, 32, 122);
+			}
+			else if (config.orbsPosition() == OrbsPosition.MORE_CLEARANCE)
+			{
+				setWidgetCoordinates(ComponentID.MINIMAP_RUN_ORB, 2, 97);
+				setWidgetCoordinates(ComponentID.MINIMAP_SPEC_ORB, 23, 124);
+			}
 
-			//xp button
 			setWidgetCoordinates(ComponentID.MINIMAP_XP_ORB, 0, 11);
-			//health orb
 			setWidgetCoordinates(ComponentID.MINIMAP_HEALTH_ORB, 0, 31);
-			//prayer orb
 			setWidgetCoordinates(ComponentID.MINIMAP_PRAYER_ORB, 0, 65);
-			//run orb
-			setWidgetCoordinates(ComponentID.MINIMAP_RUN_ORB, 10, 97);
-			//spec orb
-			setWidgetCoordinates(ComponentID.MINIMAP_SPEC_ORB, 32, 122);
-			//compass orb clickbox, doesn't have have componentID
+			//compass widgets
 			setWidgetCoordinates(client.getWidget(classicResizableGroupId, 31), 26, 1);
-			//compass orb viewbox, doesn't have have componentID
 			setWidgetCoordinates(client.getWidget(classicResizableGroupId, 29), 28, 3);
-			//world map orb, wiki banner, store orb, and activity adviser orb all handled under this function
+
 			fixWorldMapWikiStoreActAdvOrbs();
 			minimapWidget.revalidateScroll();
+		}
+	}
+
+	private void checkMinimapSprites()
+	{
+		if (!widgetsModified)
+		{
+			return;
+		}
+
+		Widget minimapSpriteContainer = client.getWidget(classicResizableGroupId, 22);
+		if (minimapSpriteContainer == null)
+		{
+			return;
+		}
+
+		if (minimapSpriteContainer.getDynamicChildren().length < 6)
+		{
+			createMinimapInvSprites();
 		}
 	}
 

@@ -1,5 +1,6 @@
 package com.lapask;
 
+import com.lapask.config.OrbsPosition;
 import com.lapask.config.ResizeBy;
 import java.awt.event.KeyEvent;
 import net.runelite.client.config.Config;
@@ -19,16 +20,24 @@ public interface FixedResizableHybridConfig extends Config
 	)
 	String resizingSettings = "resizingSettings";
 	@ConfigSection(
-		name = "Inventory Minimap Gap",
-		description = "Gap settings",
+		name = "Minimap Settings",
+		description = "Settings for minimap appearance",
 		position = 1,
 		closedByDefault = true
 	)
+	String minimapSettings = "minimapSettings";
+	@ConfigSection(
+		name = "Inventory Minimap Gap",
+		description = "Gap settings",
+		position = 2,
+		closedByDefault = true
+	)
 	String gapSettings = "gapSettings";
+
 	@ConfigSection(
 		name = "Wide Chatbox",
 		description = "Wide chatbox settings",
-		position = 2,
+		position = 3,
 		closedByDefault = true
 	)
 	String wideChatboxSettings = "wideChatboxSettings";
@@ -81,7 +90,19 @@ public interface FixedResizableHybridConfig extends Config
 	{
 		return 9;
 	}
-
+	@ConfigItem(
+		keyName = "orbsPosition",
+		name = "Orb Positioning",
+		description = "Allows for alternate minimap orb positioning.<br>"
+			+"Fixed Mode = 1:1 replica of fixed mode<br>"
+			+"More Clearance = Orbs moved outwards to prevent orb click-through on corners (e.g. run orb corner)",
+		position = 1,
+		section = minimapSettings
+	)
+	default OrbsPosition orbsPosition()
+	{
+		return OrbsPosition.FIXED_MODE;
+	}
 	@ConfigItem(
 		keyName = "useGapBorders",
 		name = "Gap Borders",
