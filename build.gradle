@@ -1,6 +1,5 @@
 plugins {
 	id 'java'
-    id 'org.jetbrains.kotlin.jvm'
 }
 
 repositories {
@@ -25,7 +24,6 @@ dependencies {
 	testImplementation 'junit:junit:4.12'
 	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
 }
 
 group = 'com.example'
@@ -60,7 +58,4 @@ tasks.register('shadowJar', Jar) {
 	group = BasePlugin.BUILD_GROUP
 	archiveClassifier.set('shadow')
 	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
-}
-kotlin {
-    jvmToolchain(21)
 }
