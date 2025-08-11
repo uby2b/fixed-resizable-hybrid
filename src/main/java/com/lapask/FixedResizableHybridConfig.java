@@ -8,6 +8,9 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Keybind;
+import java.awt.Color;
+import net.runelite.client.config.Alpha;
+
 
 @ConfigGroup("fixedresizablehybrid")
 public interface FixedResizableHybridConfig extends Config
@@ -115,6 +118,34 @@ public interface FixedResizableHybridConfig extends Config
 		return true;
 	}
 
+    // NEW: color picker for the gap color
+    @ConfigItem(
+            keyName = "gapColor",
+            name = "Gap Color",
+            description = "Color used for the gap between the inventory and minimap.",
+            position = 2,
+            section = gapSettings
+    )
+    default Color gapColor()
+    {
+        return new Color(47, 42, 32);
+    }
+
+    // NEW: semi-transparent overlay color for the gap border image
+    @ConfigItem(
+            keyName = "gapBorderColor",
+            name = "Gap Border Color",
+            description = "Color overlay applied on top of the gap border image (supports transparency).",
+            position = 3,
+            section = gapSettings
+    )
+    @Alpha
+    default Color gapBorderColor()
+    {
+        // Default: transparent
+        return new Color(255, 255, 255, 0);
+    }
+
 	@ConfigItem(
 		keyName = "isWideChatbox",
 		name = "Wide Chatbox",
@@ -123,6 +154,7 @@ public interface FixedResizableHybridConfig extends Config
 		position = 1,
 		section = wideChatboxSettings
 	)
+
 	default boolean isWideChatbox()
 	{
 		return false;
