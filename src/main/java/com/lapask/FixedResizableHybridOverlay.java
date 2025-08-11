@@ -19,7 +19,7 @@ public class FixedResizableHybridOverlay extends Overlay
     private final FixedResizableHybridConfig config;
     private static final Image gapBorder = ImageUtil.loadImageResource(FixedResizableHybridPlugin.class, "/border15px.png");
     @Inject
-    public FixedResizableHybridOverlay(Client client, FixedResizableHybridConfig config, FixedResizableHybridPlugin plugin) 
+    public FixedResizableHybridOverlay(Client client, FixedResizableHybridConfig config, FixedResizableHybridPlugin plugin)
     {
       this.client = client;
       this.config = config;
@@ -34,7 +34,7 @@ public class FixedResizableHybridOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-      // Get the canvas height dynamically
+        // Get the canvas height dynamically
         Dimension clientDimensions = client.getRealDimensions();
         int clientWidth = (int) clientDimensions.getWidth();
         int clientHeight = (int) clientDimensions.getHeight();
@@ -42,43 +42,44 @@ public class FixedResizableHybridOverlay extends Overlay
 
         graphics.setColor(config.gapColor());
         graphics.fill(overlayBounds);
-        if (config.useGapBorders()) 
+        if (config.useGapBorders())
         {
             final Color borderTint = config.gapBorderColor();
             final boolean tintHasAlpha = borderTint.getAlpha() > 0;
             // inventory gap border
             Widget inventoryParent = client.getWidget(ComponentID.RESIZABLE_VIEWPORT_INVENTORY_PARENT);
-            if (inventoryParent != null) 
+            if (inventoryParent != null)
             {
-              int imageX = inventoryParent.getCanvasLocation().getX();
-              int imageY = inventoryParent.getCanvasLocation().getY() - 15;
-              graphics.drawImage(gapBorder, imageX, imageY, null);
-              // overlay the tint only where the image pixels are
-              if (tintHasAlpha) {
+                int imageX = inventoryParent.getCanvasLocation().getX();
+                int imageY = inventoryParent.getCanvasLocation().getY() - 15;
+                graphics.drawImage(gapBorder, imageX, imageY, null);
+                // overlay the tint only where the image pixels are
+                if (tintHasAlpha)
+                {
                 Composite old = graphics.getComposite();
                 graphics.setComposite(AlphaComposite.SrcAtop);
                 graphics.setColor(borderTint);
                 graphics.fillRect(imageX, imageY, gapBorder.getWidth(null), gapBorder.getHeight(null));
                 graphics.setComposite(old);
+                }
             }
-          }
-
             // minimap gap border
-          Widget minimapContainer = client.getWidget(ComponentID.MINIMAP_CONTAINER);
-          if (minimapContainer != null) 
-          {
-            int imageX = minimapContainer.getCanvasLocation().getX();
-            int imageY = minimapContainer.getCanvasLocation().getY() + 158;
-            graphics.drawImage(gapBorder, imageX, imageY, null);
-            if (tintHasAlpha) {
-                Composite old = graphics.getComposite();
-                graphics.setComposite(AlphaComposite.SrcAtop);
-                graphics.setColor(borderTint);
-                graphics.fillRect(imageX, imageY, gapBorder.getWidth(null), gapBorder.getHeight(null));
-                graphics.setComposite(old);
-              }
+            Widget minimapContainer = client.getWidget(ComponentID.MINIMAP_CONTAINER);
+            if (minimapContainer != null)
+            {
+                int imageX = minimapContainer.getCanvasLocation().getX();
+                int imageY = minimapContainer.getCanvasLocation().getY() + 158;
+                graphics.drawImage(gapBorder, imageX, imageY, null);
+                if (tintHasAlpha)
+                {
+                    Composite old = graphics.getComposite();
+                    graphics.setComposite(AlphaComposite.SrcAtop);
+                    graphics.setColor(borderTint);
+                    graphics.fillRect(imageX, imageY, gapBorder.getWidth(null), gapBorder.getHeight(null));
+                    graphics.setComposite(old);
+                }
             }
-          }
-      return overlayBounds.getSize();
-      }
+        }
+    return overlayBounds.getSize();
     }
+}
