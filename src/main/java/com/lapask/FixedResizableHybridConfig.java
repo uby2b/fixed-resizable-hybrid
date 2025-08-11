@@ -52,7 +52,7 @@ public interface FixedResizableHybridConfig extends Config
 		position = 1,
 		section = resizingSettings
 	)
-	default boolean aspectRatioResize() 
+	default boolean aspectRatioResize()
 	{
 		return false;
 	}
@@ -60,11 +60,11 @@ public interface FixedResizableHybridConfig extends Config
 	@ConfigItem(
 		keyName = "resizeBy",
 		name = "Resize By",
-		description = "Defines whether the aspect ratio resize will calculate the new dimensions based on the original width or height.", 
+		description = "Defines whether the aspect ratio resize will calculate the new dimensions based on the original width or height.",
 		position = 2,
 		section = resizingSettings
 	)
-	default ResizeBy resizeBy() 
+	default ResizeBy resizeBy()
 	{
 		return ResizeBy.WIDTH;
 	}
@@ -76,7 +76,7 @@ public interface FixedResizableHybridConfig extends Config
 		position = 3,
 		section = resizingSettings
 	)
-	default int aspectRatioWidthResize() 
+	default int aspectRatioWidthResize()
 	{
 		return 16;
 	}
@@ -88,7 +88,7 @@ public interface FixedResizableHybridConfig extends Config
 		position = 4,
 		section = resizingSettings
 	)
-	default int aspectRatioHeightResize() 
+	default int aspectRatioHeightResize()
 	{
 		return 9;
 	}
@@ -102,7 +102,7 @@ public interface FixedResizableHybridConfig extends Config
 		position = 1,
 		section = minimapSettings
 	)
-	default OrbsPosition orbsPosition() 
+	default OrbsPosition orbsPosition()
 	{
 		return OrbsPosition.FIXED_MODE;
 	}
@@ -114,7 +114,7 @@ public interface FixedResizableHybridConfig extends Config
 		position = 1,
 		section = gapSettings
 	)
-	default boolean useGapBorders() 
+	default boolean useGapBorders()
 	{
 		return true;
 	}
