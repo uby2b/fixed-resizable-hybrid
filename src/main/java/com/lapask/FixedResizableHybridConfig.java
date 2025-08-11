@@ -15,12 +15,13 @@ import net.runelite.client.config.Keybind;
 public interface FixedResizableHybridConfig extends Config
 {
 	@ConfigSection(
-		name = "Window Resizing",
-		description = "Automatic resizing settings",
-		position = 0,
-		closedByDefault = true
+			name = "Wide Chatbox",
+			description = "Wide chatbox settings",
+			position = 0,
+			closedByDefault = true
 	)
-	String resizingSettings = "resizingSettings";
+	String wideChatboxSettings = "wideChatboxSettings";
+
 	@ConfigSection(
 		name = "Minimap Settings",
 		description = "Settings for minimap appearance",
@@ -28,6 +29,7 @@ public interface FixedResizableHybridConfig extends Config
 		closedByDefault = true
 	)
 	String minimapSettings = "minimapSettings";
+
 	@ConfigSection(
 		name = "Inventory Minimap Gap",
 		description = "Gap settings",
@@ -37,12 +39,12 @@ public interface FixedResizableHybridConfig extends Config
 	String gapSettings = "gapSettings";
 
 	@ConfigSection(
-		name = "Wide Chatbox",
-		description = "Wide chatbox settings",
-		position = 3,
-		closedByDefault = true
+			name = "Window Resizing",
+			description = "Automatic resizing settings",
+			position = 3,
+			closedByDefault = true
 	)
-	String wideChatboxSettings = "wideChatboxSettings";
+	String resizingSettings = "resizingSettings";
 
 	@ConfigItem(
 		keyName = "aspectRatioResize",
