@@ -2,7 +2,9 @@ package com.lapask;
 
 import com.lapask.config.OrbsPosition;
 import com.lapask.config.ResizeBy;
+import java.awt.Color;
 import java.awt.event.KeyEvent;
+import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -90,6 +92,7 @@ public interface FixedResizableHybridConfig extends Config
 	{
 		return 9;
 	}
+
 	@ConfigItem(
 		keyName = "orbsPosition",
 		name = "Orb Positioning",
@@ -103,6 +106,7 @@ public interface FixedResizableHybridConfig extends Config
 	{
 		return OrbsPosition.FIXED_MODE;
 	}
+
 	@ConfigItem(
 		keyName = "useGapBorders",
 		name = "Gap Borders",
@@ -113,6 +117,32 @@ public interface FixedResizableHybridConfig extends Config
 	default boolean useGapBorders()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "gapColor",
+		name = "Gap Color",
+		description = "Color used for the gap between the inventory and minimap.",
+		position = 2,
+		section = gapSettings
+	)
+	default Color gapColor() 
+	{
+		return new Color(47, 42, 32);
+	}
+
+@ConfigItem(
+	keyName = "gapBorderColor",
+	name = "Gap Border Color",
+	description = "Color overlay applied on top of the gap border image (supports transparency).",
+	position = 3,
+	section = gapSettings
+)	
+	@Alpha
+	default Color gapBorderColor() 
+	{
+		// Default: transparent
+		return new Color(255, 255, 255, 0);
 	}
 
 	@ConfigItem(
@@ -142,6 +172,7 @@ public interface FixedResizableHybridConfig extends Config
 	{
 		return true;
 	}
+
 	@ConfigItem(
 		keyName = "centerChatboxButtons",
 		name = "Center Chatbox Buttons",

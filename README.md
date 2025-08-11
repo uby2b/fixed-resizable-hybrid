@@ -26,6 +26,10 @@
 - **Automatic 16:9 Aspect Ratio Resizing**:
   - Optionally resizes the client to a 16:9 resolution for widescreen monitors.
   - Automatically calculates dimensions based on the client height.
+  
+- **Gap and Gap Border Color Control**:
+  - Choose any color for the sidepanel gap.
+  - Additionally create a semi-transparent overlay for the gap border.
 ---
 ## Future Plans
 - Increase compatibility with resource packs / interface styles
