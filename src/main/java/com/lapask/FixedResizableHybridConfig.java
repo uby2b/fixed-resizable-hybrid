@@ -2,149 +2,148 @@ package com.lapask;
 
 import com.lapask.config.OrbsPosition;
 import com.lapask.config.ResizeBy;
+import java.awt.Color;
 import java.awt.event.KeyEvent;
+import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Keybind;
-import java.awt.Color;
-import net.runelite.client.config.Alpha;
-
 
 @ConfigGroup("fixedresizablehybrid")
-public interface FixedResizableHybridConfig extends Config
+public interface FixedResizableHybridConfig extends Config 
 {
 	@ConfigSection(
 		name = "Window Resizing",
-		description = "Automatic resizing settings",
-		position = 0,
+		description = "Automatic resizing settings", 
+		position = 0, 
 		closedByDefault = true
 	)
 	String resizingSettings = "resizingSettings";
 	@ConfigSection(
-		name = "Minimap Settings",
+		name = "Minimap Settings", 
 		description = "Settings for minimap appearance",
-		position = 1,
+		position = 1, 
 		closedByDefault = true
 	)
 	String minimapSettings = "minimapSettings";
 	@ConfigSection(
-		name = "Inventory Minimap Gap",
+		name = "Inventory Minimap Gap", 
 		description = "Gap settings",
-		position = 2,
+		position = 2, 
 		closedByDefault = true
 	)
 	String gapSettings = "gapSettings";
 
 	@ConfigSection(
-		name = "Wide Chatbox",
-		description = "Wide chatbox settings",
-		position = 3,
+		name = "Wide Chatbox", 
+		description = "Wide chatbox settings", 
+		position = 3, 
 		closedByDefault = true
 	)
 	String wideChatboxSettings = "wideChatboxSettings";
 
 	@ConfigItem(
-		keyName = "aspectRatioResize",
-		name = "Aspect Ratio Resize",
+		keyName = "aspectRatioResize", 
+		name = "Aspect Ratio Resize", 
 		description = "Recommended to use with Stretched Mode Plugin at Scaling 100%.<br>"
-			+ "Reset this setting if your window size changes.",
-		position = 1,
-		section = resizingSettings
+			+ "Reset this setting if your window size changes.", 
+			position = 1, 
+			section = resizingSettings
 	)
-	default boolean aspectRatioResize()
+	default boolean aspectRatioResize() 
 	{
 		return false;
 	}
 
 	@ConfigItem(
-		keyName = "resizeBy",
-		name = "Resize By",
-		description = "Defines whether the aspect ratio resize will calculate the new dimensions based on the original width or height.",
-		position = 2,
+		keyName = "resizeBy", 
+		name = "Resize By", 
+		description = "Defines whether the aspect ratio resize will calculate the new dimensions based on the original width or height.", 
+		position = 2, 
 		section = resizingSettings
 	)
-	default ResizeBy resizeBy()
+	default ResizeBy resizeBy() 
 	{
 		return ResizeBy.WIDTH;
 	}
 
 	@ConfigItem(
-		keyName = "aspectRatioWidthResize",
-		name = "Aspect Ratio Width",
-		description = "",
-		position = 3,
+		keyName = "aspectRatioWidthResize", 
+		name = "Aspect Ratio Width", 
+		description = "", 
+		position = 3, 
 		section = resizingSettings
 	)
-	default int aspectRatioWidthResize()
+	default int aspectRatioWidthResize() 
 	{
 		return 16;
 	}
 
 	@ConfigItem(
-		keyName = "aspectRatioHeightResize",
-		name = "Aspect Ratio Height",
-		description = "",
-		position = 4,
+		keyName = "aspectRatioHeightResize", 
+		name = "Aspect Ratio Height", 
+		description = "", 
+		position = 4, 
 		section = resizingSettings
 	)
-	default int aspectRatioHeightResize()
+	default int aspectRatioHeightResize() 
 	{
 		return 9;
 	}
+
 	@ConfigItem(
-		keyName = "orbsPosition",
-		name = "Orb Positioning",
+		keyName = "orbsPosition", 
+		name = "Orb Positioning", 
 		description = "Allows for alternate minimap orb positioning.<br>"
 			+"Fixed Mode = 1:1 replica of fixed mode<br>"
-			+"More Clearance = Orbs moved outwards to prevent orb click-through on corners (e.g. run orb corner)",
-		position = 1,
+			+"More Clearance = Orbs moved outwards to prevent orb click-through on corners (e.g. run orb corner)", 
+		position = 1, 
 		section = minimapSettings
 	)
-	default OrbsPosition orbsPosition()
+	default OrbsPosition orbsPosition() 
 	{
 		return OrbsPosition.FIXED_MODE;
 	}
+
 	@ConfigItem(
-		keyName = "useGapBorders",
-		name = "Gap Borders",
-		description = "For atypical aspect ratios or users who don't use stretched mode, this adds borders to the gap between the inventory and minimap.",
-		position = 1,
+		keyName = "useGapBorders", 
+		name = "Gap Borders", 
+		description = "For atypical aspect ratios or users who don't use stretched mode, this adds borders to the gap between the inventory and minimap.", 
+		position = 1, 
 		section = gapSettings
 	)
-	default boolean useGapBorders()
+	default boolean useGapBorders() 
 	{
 		return true;
 	}
 
-    // NEW: color picker for the gap color
-    @ConfigItem(
-            keyName = "gapColor",
-            name = "Gap Color",
-            description = "Color used for the gap between the inventory and minimap.",
-            position = 2,
-            section = gapSettings
-    )
-    default Color gapColor()
-    {
-        return new Color(47, 42, 32);
-    }
+	@ConfigItem(
+		keyName = "gapColor", 
+		name = "Gap Color", 
+		description = "Color used for the gap between the inventory and minimap.", 
+		position = 2, 
+		section = gapSettings
+	)
+	default Color gapColor() 
+	{
+		return new Color(47, 42, 32);
+	}
 
-    // NEW: semi-transparent overlay color for the gap border image
-    @ConfigItem(
-            keyName = "gapBorderColor",
-            name = "Gap Border Color",
-            description = "Color overlay applied on top of the gap border image (supports transparency).",
-            position = 3,
-            section = gapSettings
-    )
-    @Alpha
-    default Color gapBorderColor()
-    {
-        // Default: transparent
-        return new Color(255, 255, 255, 0);
-    }
+@ConfigItem(
+	keyName = "gapBorderColor",
+	name = "Gap Border Color",
+	description = "Color overlay applied on top of the gap border image (supports transparency).",
+	position = 3,
+	section = gapSettings
+)	
+	@Alpha
+	default Color gapBorderColor() 
+	{
+		// Default: transparent
+		return new Color(255, 255, 255, 0);
+	}
 
 	@ConfigItem(
 		keyName = "isWideChatbox",
@@ -154,7 +153,6 @@ public interface FixedResizableHybridConfig extends Config
 		position = 1,
 		section = wideChatboxSettings
 	)
-
 	default boolean isWideChatbox()
 	{
 		return false;
@@ -174,6 +172,7 @@ public interface FixedResizableHybridConfig extends Config
 	{
 		return true;
 	}
+
 	@ConfigItem(
 		keyName = "centerChatboxButtons",
 		name = "Center Chatbox Buttons",
