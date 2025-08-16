@@ -1042,7 +1042,8 @@ public class FixedResizableHybridPlugin extends Plugin
 
 			setWidgetCoordinates(ComponentID.MINIMAP_XP_ORB, 0, 11);
 			setWidgetCoordinates(ComponentID.MINIMAP_HEALTH_ORB, 0, 31);
-			setWidgetCoordinates(ComponentID.MINIMAP_PRAYER_ORB, 0, 65);
+			setWidgetCoordinates(ComponentID.MINIMAP_PRAYER_ORB, -23, 124);
+			//setWidgetCoordinates(ComponentID.MINIMAP_PRAYER_ORB, 0, 65);
 			//compass widgets
 			setWidgetCoordinates(client.getWidget(classicResizableGroupId, 31), 26, 1);
 			setWidgetCoordinates(client.getWidget(classicResizableGroupId, 29), 28, 3);
